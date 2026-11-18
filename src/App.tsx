@@ -25,6 +25,8 @@ import {
 } from './services/googleDrive';
 import { updateGoogleDocGoalStatus } from './services/googleDocs';
 import { syncCalendarEventsToTasks } from './services/googleCalendar';
+import { checkUrlForMicrosoftToken, getStoredMicrosoftToken } from './services/microsoftAuth';
+import { getSelectedToDoList, updateMicrosoftTaskStatus } from './services/microsoftToDo';
 import { Header } from './components/Header';
 import { DailyProcess } from './components/DailyProcess';
 import { StatsView } from './components/StatsView';
@@ -219,6 +221,16 @@ export const App: React.FC = () => {
     setSettings(updatedSettings);
     saveAppSettings(updatedSettings);
 
+    // Check URL for Microsoft OAuth redirect token
+    try {
+      const msRedirectToken = checkUrlForMicrosoftToken();
+      if (msRedirectToken) {
+        showToast('התחברת בהצלחה לחשבון Microsoft!', 'success');
+      }
+    } catch (e) {
+      console.warn('Error checking Microsoft redirect token', e);
+    }
+
     // Subscribe to Google User Profile updates
     const unsubscribeProfile = onUserProfileUpdated((user) => {
       setGoogleUser(user);
@@ -340,6 +352,18 @@ export const App: React.FC = () => {
         task.title,
         nextCompleted
       ).catch(e => console.warn('Could not sync status to Google Doc:', e));
+    }
+
+    // Sync status back to Microsoft To Do if applicable
+    const msToken = getStoredMicrosoftToken();
+    const selectedList = getSelectedToDoList();
+    if (task.id.startsWith('mstodo-') && msToken?.access_token && selectedList?.id) {
+      updateMicrosoftTaskStatus(
+        selectedList.id,
+        task.id,
+        msToken.access_token,
+        nextCompleted
+      ).catch(e => console.warn('Could not sync status to Microsoft To Do:', e));
     }
   };
 

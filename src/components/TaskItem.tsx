@@ -11,7 +11,8 @@ import {
   FileText,
   Sparkles,
   Video,
-  Calendar
+  Calendar,
+  ListTodo
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -132,6 +133,11 @@ export const TaskItem: React.FC<TaskItemProps> = ({
         } catch {
           // Safe fallback
         }
+      } else if (task.id.startsWith('mstodo-')) {
+        setJustCompleted(true);
+        setTimeout(() => {
+          setJustCompleted(false);
+        }, 3200);
       }
     }
 
@@ -171,6 +177,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
   const categoryStyle = getCategoryStyles();
   const isGoal = task.category === 'goals';
   const isCalendarTask = task.id.startsWith('gcal-');
+  const isMsToDo = task.id.startsWith('mstodo-');
   const meetingInfo = getMeetingInfo(task);
 
   // Compute direct Google Doc URL if present
@@ -225,6 +232,14 @@ export const TaskItem: React.FC<TaskItemProps> = ({
               <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shadow-2xs">
                 <Calendar className="w-3 h-3 text-blue-500" />
                 <span>יומן Google</span>
+              </span>
+            )}
+
+            {/* Microsoft To Do badge */}
+            {isMsToDo && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-950/70 dark:text-sky-300 border border-sky-200 dark:border-sky-800 shadow-2xs">
+                <ListTodo className="w-3 h-3 text-sky-500" />
+                <span>Microsoft To Do</span>
               </span>
             )}
 
@@ -286,6 +301,27 @@ export const TaskItem: React.FC<TaskItemProps> = ({
                   <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-md border border-emerald-200/70 dark:border-emerald-800/70">
                     <Check className="w-3 h-3 text-emerald-500 stroke-[2.5]" />
                     <span>סונכרן למסמך Google Docs</span>
+                  </span>
+                )}
+              </>
+            )}
+
+            {/* Completed celebration & Microsoft To Do status update indicator */}
+            {task.completed && isMsToDo && (
+              <>
+                {justCompleted ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 text-sky-800 dark:bg-sky-900/80 dark:text-sky-200 border border-sky-300 dark:border-sky-700 animate-pulse shadow-sm">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+                    </span>
+                    <Sparkles className="w-3 h-3 text-sky-600 dark:text-sky-300" />
+                    <span>מתעדכן ב-Microsoft To Do...</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/50 px-2 py-0.5 rounded-md border border-sky-200/70 dark:border-sky-800/70">
+                    <Check className="w-3 h-3 text-sky-500 stroke-[2.5]" />
+                    <span>סונכרן ל-Microsoft To Do</span>
                   </span>
                 )}
               </>
