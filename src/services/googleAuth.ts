@@ -2,8 +2,7 @@ export const GOOGLE_CLIENT_ID = '1090829284866-j6lbc9vcqdufd6mr8h62vm4dpnq2djjm.
 export const GOOGLE_DRIVE_FOLDER_ID = '1skpegshPUHuIYPVuxHQdpSpXeIwGmDBd';
 
 const GOOGLE_SCOPES = [
-  'https://www.googleapis.com/auth/drive.readonly',
-  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/calendar.readonly'
 ].join(' ');
 
@@ -32,7 +31,6 @@ let tokenClient: any = null;
 let savedOnSuccess: ((token: GoogleAuthToken) => void) | null = null;
 let savedOnError: ((err: any) => void) | null = null;
 
-// Parse access token from URL hash (e.g. if redirected by Google)
 export const checkUrlForAuthToken = (): GoogleAuthToken | null => {
   if (typeof window === 'undefined') return null;
   const hash = window.location.hash;
@@ -51,7 +49,6 @@ export const checkUrlForAuthToken = (): GoogleAuthToken | null => {
       saveStoredToken(token);
       saveStoredGoogleUser({ email: 'מחובר ל-Google', name: 'משתמש Google' });
 
-      // Clean hash from URL for clean appearance
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
       fetchAndSaveUserInfo(token.access_token).catch(() => {});
       return token;
@@ -69,7 +66,6 @@ export const initGoogleTokenClient = (
   savedOnSuccess = onSuccess;
   if (onError) savedOnError = onError;
 
-  // First check if token is already in URL hash
   const urlToken = checkUrlForAuthToken();
   if (urlToken) {
     onSuccess(urlToken);
@@ -115,7 +111,6 @@ export const initGoogleTokenClient = (
   return tokenClient;
 };
 
-// SYNCHRONOUS login trigger to prevent popup blocking
 export const triggerGoogleLogin = (
   onSuccess?: (token: GoogleAuthToken) => void,
   onError?: (err: any) => void
@@ -123,18 +118,16 @@ export const triggerGoogleLogin = (
   if (onSuccess) savedOnSuccess = onSuccess;
   if (onError) savedOnError = onError;
 
-  // If token client not ready yet, try initializing now synchronously
   if (!tokenClient && window.google?.accounts?.oauth2) {
     initGoogleTokenClient(savedOnSuccess || (() => {}), savedOnError || undefined);
   }
 
   if (tokenClient) {
-    // SYNCHRONOUS - retains user click gesture!
     tokenClient.requestAccessToken({ prompt: 'consent' });
     return true;
   }
 
-  // Fallback: direct OAuth redirect URL (works on any device without popup blocker)
+  // Fallback direct OAuth redirect
   const redirectUri = window.location.origin + window.location.pathname;
   const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
     GOOGLE_CLIENT_ID
