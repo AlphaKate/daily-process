@@ -117,7 +117,7 @@ export const parseDurationMinutes = (text: string): { durationMinutes?: number; 
   }
 
   // Hours: e.g. '1.5 שעות', '2 שעות', '1 שעה', '2h', '1.5h'
-  const hoursMatch = cleaned.match(/(\d+(?:\.\d+)?)\s*(?:שעות|שעה|hours|hour|hr|h)\b/i);
+  const hoursMatch = cleaned.match(/(\d+(?:\.\d+)?)\s*(?:שעות|שעה|hours|hour|hr|h)(?=$|\s|[^\p{L}\p{N}])/iu);
   if (hoursMatch) {
     const mins = Math.round(parseFloat(hoursMatch[1]) * 60);
     return {
@@ -269,7 +269,7 @@ export const parseDocForGoals = (
         isStrikethrough ||
         /\[[xXvV✓✔]\]/.test(trimmed) ||
         /^[☑✅✓✔]/.test(trimmed) ||
-        /\b(בוצע|הושלם|done)\b/i.test(trimmed);
+        /(?:^|\s|[^\p{L}\p{N}])(בוצע|הושלם|done)(?=$|\s|[^\p{L}\p{N}])/iu.test(trimmed);
 
       intermediateItems.push({
         text: trimmed,
@@ -301,7 +301,7 @@ export const parseDocForGoals = (
         /\[[xXvV✓✔]\]/.test(line) ||
         /^[☑✅✓✔]/.test(line) ||
         /~~.+~~/.test(line) ||
-        /\b(בוצע|הושלם|done)\b/i.test(line);
+        /(?:^|\s|[^\p{L}\p{N}])(בוצע|הושלם|done)(?=$|\s|[^\p{L}\p{N}])/iu.test(line);
 
       intermediateItems.push({
         text: line,

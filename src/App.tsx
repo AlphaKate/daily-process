@@ -402,6 +402,14 @@ export const App: React.FC = () => {
     setTaskToDelete(null);
   };
 
+  const handleRescheduleTask = (task: Task, newDate: string) => {
+    const updated = tasks.map(t =>
+      t.id === task.id ? { ...t, date: newDate, updatedAt: new Date().toISOString() } : t
+    );
+    persistTasks(updated);
+    showToast(`היעד תוזמן לתאריך ${newDate}`, 'success');
+  };
+
   // Morning Review Rollover
   const handleConfirmRollover = (selectedTaskIds: string[], completedTaskIds: string[]) => {
     const today = getTodayDateString();
@@ -501,10 +509,12 @@ export const App: React.FC = () => {
           <DailyProcess
             tasks={filteredTasksForDate}
             currentDate={currentDate}
+            allTasks={tasks}
             onToggleComplete={handleToggleComplete}
             onEditTask={handleEditTask}
             onDeleteRequest={handleDeleteRequest}
             onQuickAddTask={handleOpenAddTask}
+            onRescheduleTask={handleRescheduleTask}
           />
         ) : (
           <StatsView
