@@ -136,6 +136,10 @@ export const App: React.FC = () => {
           mergedTasks
         );
         calendarCount = calResult.newTasks.length;
+        if (calResult.updatedTasks && calResult.updatedTasks.length > 0) {
+          const updatedMap = new Map(calResult.updatedTasks.map(t => [t.id, t]));
+          mergedTasks = mergedTasks.map(t => updatedMap.get(t.id) || t);
+        }
         if (calResult.newTasks.length > 0) {
           mergedTasks = [...calResult.newTasks, ...mergedTasks];
         }
