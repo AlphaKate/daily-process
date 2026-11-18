@@ -438,6 +438,13 @@ export const App: React.FC = () => {
     showToast(`היעד תוזמן לתאריך ${newDate}`, 'success');
   };
 
+  const handleTasksSynced = (newTasks: Task[], updatedTasks: Task[]) => {
+    const map = new Map(tasks.map(t => [t.id, t]));
+    updatedTasks.forEach(t => map.set(t.id, t));
+    newTasks.forEach(t => map.set(t.id, t));
+    persistTasks(Array.from(map.values()));
+  };
+
   // Morning Review Rollover
   const handleConfirmRollover = (selectedTaskIds: string[], completedTaskIds: string[]) => {
     const today = getTodayDateString();
@@ -543,6 +550,7 @@ export const App: React.FC = () => {
             onDeleteRequest={handleDeleteRequest}
             onQuickAddTask={handleOpenAddTask}
             onRescheduleTask={handleRescheduleTask}
+            onTasksSynced={handleTasksSynced}
           />
         ) : (
           <StatsView
