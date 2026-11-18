@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Task, TaskCategory, AppSettings } from './types';
 import {
   getStoredTasks,
@@ -8,12 +8,24 @@ import {
   saveAppSettings,
   checkUnfinishedPreviousTasks,
 } from './services/storage';
+import {
+  initGoogleTokenClient,
+  requestGoogleLogin,
+  logoutGoogle,
+  getStoredToken,
+  getStoredGoogleUser,
+  GoogleUser,
+  GOOGLE_DRIVE_FOLDER_ID
+} from './services/googleAuth';
+import { syncDriveGoalsToTasks } from './services/googleDrive';
+import { syncCalendarEventsToTasks } from './services/googleCalendar';
 import { Header } from './components/Header';
 import { DailyProcess } from './components/DailyProcess';
 import { StatsView } from './components/StatsView';
 import { TaskModal } from './components/TaskModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { MorningReviewModal } from './components/MorningReviewModal';
+import { CheckCircle2, AlertCircle, X } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -23,6 +35,11 @@ export const App: React.FC = () => {
   // Theme state
   const [settings, setSettings] = useState<AppSettings>(getAppSettings);
   const [isDark, setIsDark] = useState<boolean>(false);
+
+  // Google integration state
+  const [googleUser, setGoogleUser] = useState<GoogleUser | null>(getStoredGoogleUser);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // Modals state
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -36,7 +53,82 @@ export const App: React.FC = () => {
   const [overdueTasks, setOverdueTasks] = useState<Task[]>([]);
   const [isMorningReviewOpen, setIsMorningReviewOpen] = useState(false);
 
-  // Initialize data and check day rollover
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => {
+      setNotification(prev => (prev?.message === message ? null : prev));
+    }, 6000);
+  };
+
+  const syncGoogleServices = useCallback(async (tokenStr?: string) => {
+    const tokenObj = tokenStr ? { access_token: tokenStr } : getStoredToken();
+    if (!tokenObj) {
+      showToast('נא להתחבר תחילה לחשבון Google', 'error');
+      return;
+    }
+
+    setIsSyncing(true);
+    let calendarCount = 0;
+    let driveCount = 0;
+    const currentTasks = getStoredTasks();
+    let updatedTasks = [...currentTasks];
+
+    try {
+      // 1. Sync Google Calendar -> Must Do
+      try {
+        const calResult = await syncCalendarEventsToTasks(
+          currentDate,
+          tokenObj.access_token,
+          updatedTasks
+        );
+        calendarCount = calResult.newTasks.length;
+        if (calResult.newTasks.length > 0) {
+          updatedTasks = [...calResult.newTasks, ...updatedTasks];
+        }
+      } catch (calErr: any) {
+        console.warn('Google Calendar sync warning:', calErr);
+      }
+
+      // 2. Sync Google Drive -> Goals
+      try {
+        const driveResult = await syncDriveGoalsToTasks(
+          GOOGLE_DRIVE_FOLDER_ID,
+          tokenObj.access_token,
+          updatedTasks,
+          currentDate
+        );
+        driveCount = driveResult.newTasks.length;
+        if (driveResult.newTasks.length > 0) {
+          updatedTasks = [...driveResult.newTasks, ...updatedTasks];
+        }
+      } catch (driveErr: any) {
+        console.warn('Google Drive sync warning:', driveErr);
+        if (driveErr?.message?.includes('disabled')) {
+          showToast('יש להפעיל את Google Drive API ב-Google Cloud Console', 'error');
+        }
+      }
+
+      setTasks(updatedTasks);
+      saveStoredTasks(updatedTasks);
+
+      const msgParts = [];
+      if (calendarCount > 0) msgParts.push(`${calendarCount} פגישות מיומן Google נוספו ל-Must Do`);
+      if (driveCount > 0) msgParts.push(`${driveCount} יעדים מ-Google Drive סונכרנו ל-Goals`);
+      
+      if (msgParts.length > 0) {
+        showToast(msgParts.join(' | '), 'success');
+      } else {
+        showToast('הנתונים מול Google מעודכנים במלואם!', 'success');
+      }
+    } catch (err: any) {
+      console.error('Overall Google sync error:', err);
+      showToast(err.message || 'שגיאה בסנכרון מול Google', 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [currentDate]);
+
+  // Initialize data, theme, and Google Token Client
   useEffect(() => {
     const loadedTasks = getStoredTasks();
     setTasks(loadedTasks);
@@ -66,7 +158,20 @@ export const App: React.FC = () => {
     };
     setSettings(updatedSettings);
     saveAppSettings(updatedSettings);
-  }, []);
+
+    // Setup Google Token Client
+    initGoogleTokenClient(
+      (token) => {
+        setGoogleUser(getStoredGoogleUser());
+        showToast('התחברת בהצלחה לחשבון Google!', 'success');
+        syncGoogleServices(token.access_token);
+      },
+      (err) => {
+        console.error('Google login error', err);
+        showToast('שגיאה בהתחברות ל-Google', 'error');
+      }
+    );
+  }, [syncGoogleServices]);
 
   const handleToggleTheme = () => {
     const nextDark = !isDark;
@@ -82,6 +187,21 @@ export const App: React.FC = () => {
     };
     setSettings(updatedSettings);
     saveAppSettings(updatedSettings);
+  };
+
+  const handleConnectGoogle = () => {
+    try {
+      requestGoogleLogin();
+    } catch (err: any) {
+      console.error('Login initiation failed', err);
+      showToast('ספריית Google עדיין נטענת בדפדפן, אנא נסה שוב בעוד מספר שניות', 'error');
+    }
+  };
+
+  const handleLogoutGoogle = () => {
+    logoutGoogle();
+    setGoogleUser(null);
+    showToast('התנתקת מחשבון Google', 'success');
   };
 
   // Task actions
@@ -114,7 +234,6 @@ export const App: React.FC = () => {
 
   const handleSaveTask = (taskData: Partial<Task>) => {
     if (editingTask) {
-      // Update existing
       const updated = tasks.map(t =>
         t.id === editingTask.id
           ? {
@@ -127,7 +246,6 @@ export const App: React.FC = () => {
       setTasks(updated);
       saveStoredTasks(updated);
     } else {
-      // Add new
       const now = new Date().toISOString();
       const newTask: Task = {
         id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
@@ -167,7 +285,6 @@ export const App: React.FC = () => {
     const today = getTodayDateString();
     let updated = [...tasks];
 
-    // Mark tasks marked as completed
     if (completedTaskIds.length > 0) {
       const now = new Date().toISOString();
       updated = updated.map(t =>
@@ -177,7 +294,6 @@ export const App: React.FC = () => {
       );
     }
 
-    // Rollover selected tasks to today
     if (selectedTaskIds.length > 0) {
       updated = updated.map(t =>
         selectedTaskIds.includes(t.id)
@@ -196,7 +312,6 @@ export const App: React.FC = () => {
     setCurrentDate(today);
   };
 
-  // Tasks for the selected date
   const filteredTasksForDate = tasks.filter(t => t.date === currentDate);
 
   return (
@@ -210,7 +325,40 @@ export const App: React.FC = () => {
         isDark={isDark}
         onToggleTheme={handleToggleTheme}
         onOpenAddTask={() => handleOpenAddTask('must_do')}
+        googleUser={googleUser}
+        isSyncing={isSyncing}
+        onConnectGoogle={handleConnectGoogle}
+        onSyncGoogle={() => syncGoogleServices()}
+        onLogoutGoogle={handleLogoutGoogle}
       />
+
+      {/* Floating Notification Toast */}
+      {notification && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 max-w-md w-[92%] animate-in slide-in-from-top duration-300">
+          <div
+            className={`p-3.5 rounded-2xl shadow-xl border flex items-center justify-between gap-3 text-xs font-semibold ${
+              notification.type === 'success'
+                ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-900/20'
+                : 'bg-rose-600 text-white border-rose-500 shadow-rose-900/20'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {notification.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 shrink-0" />
+              )}
+              <span>{notification.message}</span>
+            </div>
+            <button
+              onClick={() => setNotification(null)}
+              className="p-1 hover:bg-white/20 rounded-lg transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-3xl w-full mx-auto px-4 py-5">
@@ -252,7 +400,7 @@ export const App: React.FC = () => {
         onConfirm={handleConfirmDelete}
       />
 
-      {/* Morning Review Modal (Carried over tasks from previous days) */}
+      {/* Morning Review Modal */}
       <MorningReviewModal
         isOpen={isMorningReviewOpen}
         overdueTasks={overdueTasks}
