@@ -2,14 +2,7 @@ import React, { useState } from 'react';
 import { Task, TaskCategory } from '../types';
 import { TaskItem } from './TaskItem';
 import { GoalsTimelineModal } from './GoalsTimelineModal';
-import { MicrosoftListModal } from './MicrosoftListModal';
 import { getStoredTasks, saveStoredTasks } from '../services/storage';
-import {
-  getSelectedToDoList,
-  syncMicrosoftTasksToCasual,
-  SelectedToDoList
-} from '../services/microsoftToDo';
-import { getStoredMicrosoftToken } from '../services/microsoftAuth';
 import {
   ChevronDown,
   ChevronUp,
@@ -25,7 +18,6 @@ import {
   ArrowRightLeft,
   Milestone as MilestoneIcon,
   ListTodo,
-  RefreshCw,
   ExternalLink
 } from 'lucide-react';
 
@@ -56,74 +48,15 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
   onDeleteRequest,
   onQuickAddTask,
   onRescheduleTask,
-  onTasksSynced,
+  onTasksSynced: _onTasksSynced,
 }) => {
   const [showDoneSection, setShowDoneSection] = useState(true);
   const [goalsViewMode, setGoalsViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
   const [milestoneFilter, setMilestoneFilter] = useState<string>('all');
   const [, setLocalTasksVersion] = useState(0);
-
-  // Microsoft To Do state
-  const [isListModalOpen, setIsListModalOpen] = useState(false);
-  const [selectedToDoList, setSelectedToDoList] = useState<SelectedToDoList | null>(getSelectedToDoList);
-  const [isSyncingToDo, setIsSyncingToDo] = useState(false);
-  const [toDoSyncFeedback, setToDoSyncFeedback] = useState<string | null>(null);
-
   // Fallback to getStoredTasks() if allTasks prop is not passed
   const masterTasks = allTasks || getStoredTasks();
-
-  const handleSyncToDo = async (targetList?: SelectedToDoList) => {
-    const activeList = targetList || selectedToDoList || getSelectedToDoList();
-    const token = getStoredMicrosoftToken();
-
-    if (!token?.access_token) {
-      setIsListModalOpen(true);
-      return;
-    }
-
-    if (!activeList?.id) {
-      setIsListModalOpen(true);
-      return;
-    }
-
-    setIsSyncingToDo(true);
-    setToDoSyncFeedback(null);
-    try {
-      const result = await syncMicrosoftTasksToCasual(
-        activeList.id,
-        token.access_token,
-        masterTasks,
-        currentDate
-      );
-
-      // Merge new and updated tasks
-      const existingMap = new Map(masterTasks.map(t => [t.id, t]));
-      result.updatedTasks.forEach(t => existingMap.set(t.id, t));
-      result.newTasks.forEach(t => existingMap.set(t.id, t));
-      const merged = Array.from(existingMap.values());
-      saveStoredTasks(merged);
-      setLocalTasksVersion(v => v + 1);
-
-      if (onTasksSynced) {
-        onTasksSynced(result.newTasks, result.updatedTasks);
-      }
-
-      const totalCount = result.newTasks.length + result.updatedTasks.length;
-      if (totalCount > 0) {
-        setToDoSyncFeedback(`סונכרנו ${totalCount} משימות`);
-      } else {
-        setToDoSyncFeedback('הרשימה מעודכנת');
-      }
-      setTimeout(() => setToDoSyncFeedback(null), 3500);
-    } catch (err) {
-      console.error('Failed to sync Microsoft To Do tasks:', err);
-      setToDoSyncFeedback('שגיאה בסנכרון');
-      setTimeout(() => setToDoSyncFeedback(null), 3500);
-    } finally {
-      setIsSyncingToDo(false);
-    }
-  };
 
   // Filter tasks for current active view
   const activeTasks = tasks.filter(t => !t.completed);
@@ -633,62 +566,22 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                     {casualTasks.length}
                   </span>
                 </h2>
-                {selectedToDoList ? (
-                  <span
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-950/70 dark:text-sky-300 border border-sky-200 dark:border-sky-800 shadow-2xs"
-                    title={`רשימת Microsoft To Do מסונכרנת: ${selectedToDoList.name}`}
-                  >
-                    <ListTodo className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                    <span>רשימה: {selectedToDoList.name}</span>
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsListModalOpen(true)}
-                    className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-sky-600 dark:text-slate-500 dark:hover:text-sky-400 transition-colors"
-                  >
-                    <ListTodo className="w-3 h-3" />
-                    <span>בחר רשימת To Do</span>
-                  </button>
-                )}
+                <span
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-950/70 dark:text-sky-300 border border-sky-200 dark:border-sky-800 shadow-2xs"
+                  title="רשימת Microsoft To Do: סופר"
+                >
+                  <ListTodo className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                  <span>רשימת "סופר" ב-To Do</span>
+                </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                סידורים אישיים, קניות ומשימות שוטפות מתוך Microsoft To Do
+                סידורים אישיים וקניות מתוך רשימת "סופר" ב-Microsoft To Do
               </p>
             </div>
           </div>
 
-          {/* Action Bar: Synced list indicator, 'בחר רשימה', 'סנכרן To Do', 'הוסף' */}
+          {/* Action Bar: Direct Link to 'סופר' and 'הוסף' */}
           <div className="flex items-center flex-wrap gap-1.5 self-end sm:self-auto">
-            {toDoSyncFeedback && (
-              <span className="text-[11px] font-semibold text-sky-600 dark:text-sky-400 px-2 py-0.5 rounded-md bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 animate-in fade-in">
-                {toDoSyncFeedback}
-              </span>
-            )}
-
-            {/* 'בחר רשימה' button to open MicrosoftListModal */}
-            <button
-              type="button"
-              onClick={() => setIsListModalOpen(true)}
-              className="p-1.5 text-xs text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/50 rounded-xl border border-sky-200 dark:border-sky-800 flex items-center gap-1 font-semibold transition-colors"
-              title="בחר או החלף רשימת Microsoft To Do לסנכרון"
-            >
-              <ListTodo className="w-3.5 h-3.5" />
-              <span>בחר רשימה</span>
-            </button>
-
-            {/* 'סנכרן To Do' button */}
-            <button
-              type="button"
-              onClick={() => handleSyncToDo()}
-              disabled={isSyncingToDo}
-              className="p-1.5 text-xs text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/50 rounded-xl border border-sky-200 dark:border-sky-800 flex items-center gap-1 font-semibold transition-colors disabled:opacity-50"
-              title="סנכרן משימות מול רשימת Microsoft To Do"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingToDo ? 'animate-spin' : ''}`} />
-              <span>{isSyncingToDo ? 'מסנכרן...' : 'סנכרן To Do'}</span>
-            </button>
-
             {/* Direct 1-tap link to "סופר" in Microsoft To Do */}
             <a
               href="https://to-do.microsoft.com/sharing?InvitationToken=cSHAtsnUNTW0E2q3AEdlYmuhB8FZ2Q3tILzClg0YBCn-KrWUF9s9KrPQZJrtOsYlCiEN015c05_7oQPJaeCRkA"
@@ -780,13 +673,6 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
         onRescheduleGoal={handleReschedule}
       />
 
-      {/* 6. MICROSOFT LIST MODAL */}
-      <MicrosoftListModal
-        isOpen={isListModalOpen}
-        onClose={() => setIsListModalOpen(false)}
-        onListSelected={(list) => setSelectedToDoList(list)}
-        onSyncRequested={(list) => handleSyncToDo(list)}
-      />
     </div>
   );
 };

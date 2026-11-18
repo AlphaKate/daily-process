@@ -1,14 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Sun, Moon, BarChart3, CheckSquare, Calendar, ChevronRight, ChevronLeft, Plus, RefreshCw, LogIn, LogOut, ListTodo } from 'lucide-react';
 import { formatDateDisplayHebrew, getTodayDateString } from '../services/storage';
 import { GoogleUser } from '../services/googleAuth';
-import {
-  MicrosoftUser,
-  getStoredMicrosoftUser,
-  onMicrosoftUserUpdated,
-  triggerMicrosoftLogin,
-  logoutMicrosoft
-} from '../services/microsoftAuth';
 
 interface HeaderProps {
   currentDate: string;
@@ -24,12 +17,6 @@ interface HeaderProps {
   onConnectGoogle: () => void;
   onSyncGoogle: () => void;
   onLogoutGoogle: () => void;
-  // Microsoft Auth & Sync (optional props with built-in fallbacks)
-  microsoftUser?: MicrosoftUser | null;
-  isSyncingMs?: boolean;
-  onConnectMicrosoft?: () => void;
-  onSyncMicrosoft?: () => void;
-  onLogoutMicrosoft?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -45,39 +32,7 @@ export const Header: React.FC<HeaderProps> = ({
   onConnectGoogle,
   onSyncGoogle,
   onLogoutGoogle,
-  microsoftUser: propMsUser,
-  isSyncingMs = false,
-  onConnectMicrosoft,
-  onSyncMicrosoft,
-  onLogoutMicrosoft,
 }) => {
-  const [internalMsUser, setInternalMsUser] = useState<MicrosoftUser | null>(getStoredMicrosoftUser);
-
-  useEffect(() => {
-    const unsub = onMicrosoftUserUpdated((user) => {
-      setInternalMsUser(user);
-    });
-    return unsub;
-  }, []);
-
-  const effectiveMsUser = propMsUser !== undefined ? propMsUser : internalMsUser;
-
-  const handleConnectMs = () => {
-    if (onConnectMicrosoft) {
-      onConnectMicrosoft();
-    } else {
-      triggerMicrosoftLogin();
-    }
-  };
-
-  const handleLogoutMs = () => {
-    if (onLogoutMicrosoft) {
-      onLogoutMicrosoft();
-    } else {
-      logoutMicrosoft();
-      setInternalMsUser(null);
-    }
-  };
   const isToday = currentDate === getTodayDateString();
 
   const handlePrevDay = () => {
@@ -147,54 +102,18 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* Microsoft To Do Sync Status / Connect Button */}
-            {effectiveMsUser ? (
-              <div className="flex items-center gap-1 bg-sky-50 dark:bg-sky-950/60 border border-sky-300 dark:border-sky-800 px-2 py-1 rounded-xl">
-                <div className="flex items-center gap-1 text-[11px] sm:text-xs font-bold text-sky-700 dark:text-sky-300">
-                  {effectiveMsUser.picture ? (
-                    <img
-                      src={effectiveMsUser.picture}
-                      alt={effectiveMsUser.name}
-                      className="w-3.5 h-3.5 rounded-full object-cover"
-                    />
-                  ) : (
-                    <ListTodo className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-                  )}
-                  {onSyncMicrosoft ? (
-                    <button
-                      onClick={onSyncMicrosoft}
-                      disabled={isSyncingMs}
-                      className="flex items-center gap-1 hover:text-sky-800 disabled:opacity-50"
-                      title="סנכרן מול Microsoft To Do"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isSyncingMs ? 'animate-spin' : ''}`} />
-                      <span className="hidden md:inline">{isSyncingMs ? 'מסנכרן...' : 'To Do'}</span>
-                    </button>
-                  ) : (
-                    <span className="hidden md:inline max-w-[80px] truncate" title={effectiveMsUser.name}>
-                      {effectiveMsUser.name}
-                    </span>
-                  )}
-                </div>
-                <button
-                  onClick={handleLogoutMs}
-                  className="p-1 text-slate-400 hover:text-rose-500 transition-colors"
-                  title="התנתקות מ-Microsoft"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={handleConnectMs}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
-                title="התחברות לחשבון Microsoft כדי לסנכרן רשימת To Do"
-              >
-                <ListTodo className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span className="hidden md:inline">התחבר ל-Microsoft</span>
-                <span className="md:hidden">To Do</span>
-              </button>
-            )}
+            {/* Direct Link to "סופר" in Microsoft To Do */}
+            <a
+              href="https://to-do.microsoft.com/sharing?InvitationToken=cSHAtsnUNTW0E2q3AEdlYmuhB8FZ2Q3tILzClg0YBCn-KrWUF9s9KrPQZJrtOsYlCiEN015c05_7oQPJaeCRkA"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
+              title="פתח את רשימת סופר באפליקציית Microsoft To Do"
+            >
+              <ListTodo className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span className="hidden md:inline">רשימת "סופר"</span>
+              <span className="md:hidden">סופר</span>
+            </a>
 
             {/* View switcher: Process vs Stats */}
             <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
