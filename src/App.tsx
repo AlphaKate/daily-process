@@ -189,12 +189,22 @@ export const App: React.FC = () => {
     saveAppSettings(updatedSettings);
   };
 
-  const handleConnectGoogle = () => {
+  const handleConnectGoogle = async () => {
     try {
-      requestGoogleLogin();
+      await requestGoogleLogin(
+        (token) => {
+          setGoogleUser(getStoredGoogleUser());
+          showToast('התחברת בהצלחה לחשבון Google!', 'success');
+          syncGoogleServices(token.access_token);
+        },
+        (err) => {
+          console.error('Google login error', err);
+          showToast('שגיאה בהתחברות ל-Google', 'error');
+        }
+      );
     } catch (err: any) {
       console.error('Login initiation failed', err);
-      showToast('ספריית Google עדיין נטענת בדפדפן, אנא נסה שוב בעוד מספר שניות', 'error');
+      showToast(err.message || 'שגיאה בטעינת ספריית Google', 'error');
     }
   };
 

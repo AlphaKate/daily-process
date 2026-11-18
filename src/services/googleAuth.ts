@@ -30,11 +30,16 @@ declare global {
 }
 
 let tokenClient: any = null;
+let savedOnSuccess: ((token: GoogleAuthToken) => void) | null = null;
+let savedOnError: ((err: any) => void) | null = null;
 
 export const initGoogleTokenClient = (
   onSuccess: (token: GoogleAuthToken) => void,
   onError?: (err: any) => void
 ) => {
+  savedOnSuccess = onSuccess;
+  if (onError) savedOnError = onError;
+
   if (typeof window === 'undefined' || !window.google?.accounts?.oauth2) {
     return null;
   }
@@ -44,7 +49,7 @@ export const initGoogleTokenClient = (
     scope: GOOGLE_SCOPES,
     callback: async (response: any) => {
       if (response.error) {
-        if (onError) onError(response);
+        if (savedOnError) savedOnError(response);
         return;
       }
 
@@ -55,18 +60,45 @@ export const initGoogleTokenClient = (
 
       saveStoredToken(token);
       await fetchAndSaveUserInfo(token.access_token);
-      onSuccess(token);
+      if (savedOnSuccess) savedOnSuccess(token);
     },
   });
 
   return tokenClient;
 };
 
-export const requestGoogleLogin = () => {
-  if (!tokenClient) {
-    throw new Error('Google OAuth client not initialized yet');
+export const ensureTokenClient = async (
+  onSuccess: (token: GoogleAuthToken) => void,
+  onError?: (err: any) => void
+): Promise<any> => {
+  if (tokenClient) return tokenClient;
+
+  // If google script not yet available on window, wait up to 4 seconds
+  let retries = 20;
+  while (retries > 0 && (!window.google || !window.google.accounts?.oauth2)) {
+    await new Promise(res => setTimeout(res, 200));
+    retries--;
   }
-  tokenClient.requestAccessToken({ prompt: 'consent' });
+
+  if (window.google?.accounts?.oauth2) {
+    return initGoogleTokenClient(onSuccess, onError);
+  }
+
+  throw new Error('Google Identity script failed to load. Please check your internet connection or ad-blocker.');
+};
+
+export const requestGoogleLogin = async (
+  onSuccess?: (token: GoogleAuthToken) => void,
+  onError?: (err: any) => void
+) => {
+  const client = await ensureTokenClient(
+    onSuccess || savedOnSuccess || (() => {}),
+    onError || savedOnError || undefined
+  );
+  if (!client) {
+    throw new Error('Could not initialize Google client');
+  }
+  client.requestAccessToken({ prompt: 'consent' });
 };
 
 export const getStoredToken = (): GoogleAuthToken | null => {
