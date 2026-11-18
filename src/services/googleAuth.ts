@@ -86,6 +86,8 @@ export const checkUrlForAuthToken = (): GoogleAuthToken | null => {
 
   try {
     const params = new URLSearchParams(hash.substring(1));
+    // Do not interfere with Microsoft OAuth redirect
+    if (params.get('state') === 'ms_auth') return null;
     const accessToken = params.get('access_token');
     const expiresIn = Number(params.get('expires_in')) || 3599;
 
