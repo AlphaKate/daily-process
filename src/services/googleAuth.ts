@@ -31,6 +31,53 @@ let tokenClient: any = null;
 let savedOnSuccess: ((token: GoogleAuthToken) => void) | null = null;
 let savedOnError: ((err: any) => void) | null = null;
 
+type UserListener = (user: GoogleUser) => void;
+const userListeners: UserListener[] = [];
+
+export const onUserProfileUpdated = (callback: UserListener): (() => void) => {
+  userListeners.push(callback);
+  return () => {
+    const idx = userListeners.indexOf(callback);
+    if (idx !== -1) userListeners.splice(idx, 1);
+  };
+};
+
+const notifyUserProfileListeners = (user: GoogleUser) => {
+  userListeners.forEach(cb => {
+    try {
+      cb(user);
+    } catch (e) {
+      console.warn('User listener error', e);
+    }
+  });
+};
+
+export const isMobileDevice = (): boolean => {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+  return /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+};
+
+export const getOAuthRedirectUri = (): string => {
+  if (typeof window === 'undefined') return '';
+  let path = window.location.pathname;
+  if (!path.endsWith('/')) {
+    path = path + '/';
+  }
+  return window.location.origin + path;
+};
+
+export const getGoogleOAuthUrl = (): string => {
+  const redirectUri = getOAuthRedirectUri();
+  return `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
+    GOOGLE_CLIENT_ID
+  )}&redirect_uri=${encodeURIComponent(
+    redirectUri
+  )}&response_type=token&scope=${encodeURIComponent(
+    GOOGLE_SCOPES
+  )}&prompt=consent`;
+};
+
+// Parse access token from URL hash (from official OAuth Redirect Flow)
 export const checkUrlForAuthToken = (): GoogleAuthToken | null => {
   if (typeof window === 'undefined') return null;
   const hash = window.location.hash;
@@ -47,9 +94,17 @@ export const checkUrlForAuthToken = (): GoogleAuthToken | null => {
         expires_at: Date.now() + expiresIn * 1000
       };
       saveStoredToken(token);
-      saveStoredGoogleUser({ email: 'מחובר ל-Google', name: 'משתמש Google' });
+      
+      const defaultUser: GoogleUser = {
+        email: 'מחובר ל-Google',
+        name: 'משתמש Google'
+      };
+      saveStoredGoogleUser(defaultUser);
 
+      // Clean hash from URL for a clean look and reliable SPA routing
       window.history.replaceState(null, '', window.location.pathname + window.location.search);
+
+      // Fetch user profile info asynchronously
       fetchAndSaveUserInfo(token.access_token).catch(() => {});
       return token;
     }
@@ -66,6 +121,7 @@ export const initGoogleTokenClient = (
   savedOnSuccess = onSuccess;
   if (onError) savedOnError = onError;
 
+  // First check if token is already present in URL hash from redirect
   const urlToken = checkUrlForAuthToken();
   if (urlToken) {
     onSuccess(urlToken);
@@ -111,32 +167,35 @@ export const initGoogleTokenClient = (
   return tokenClient;
 };
 
+/**
+ * Triggers Google Login:
+ * - On desktop: immediately redirects to official Google OAuth consent URL,
+ *   completely bypassing popup blockers and Chrome cross-window postMessage issues.
+ * - On mobile: uses tokenClient popup if available (ideal for iOS standalone PWA),
+ *   or falls back to direct redirect.
+ */
 export const triggerGoogleLogin = (
   onSuccess?: (token: GoogleAuthToken) => void,
-  onError?: (err: any) => void
+  onError?: (err: any) => void,
+  forceRedirect: boolean = false
 ): boolean => {
   if (onSuccess) savedOnSuccess = onSuccess;
   if (onError) savedOnError = onError;
 
-  if (!tokenClient && window.google?.accounts?.oauth2) {
-    initGoogleTokenClient(savedOnSuccess || (() => {}), savedOnError || undefined);
+  const isMobile = isMobileDevice();
+
+  if (isMobile && !forceRedirect) {
+    if (!tokenClient && window.google?.accounts?.oauth2) {
+      initGoogleTokenClient(savedOnSuccess || (() => {}), savedOnError || undefined);
+    }
+    if (tokenClient) {
+      tokenClient.requestAccessToken({ prompt: 'consent' });
+      return true;
+    }
   }
 
-  if (tokenClient) {
-    tokenClient.requestAccessToken({ prompt: 'consent' });
-    return true;
-  }
-
-  // Fallback direct OAuth redirect
-  const redirectUri = window.location.origin + window.location.pathname;
-  const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
-    GOOGLE_CLIENT_ID
-  )}&redirect_uri=${encodeURIComponent(
-    redirectUri
-  )}&response_type=token&scope=${encodeURIComponent(
-    GOOGLE_SCOPES
-  )}&prompt=consent`;
-
+  // Desktop or fallback direct OAuth redirect
+  const oauthUrl = getGoogleOAuthUrl();
   window.location.href = oauthUrl;
   return true;
 };
@@ -172,9 +231,10 @@ export const getStoredGoogleUser = (): GoogleUser | null => {
 
 export const saveStoredGoogleUser = (user: GoogleUser): void => {
   localStorage.setItem(USER_KEY, JSON.stringify(user));
+  notifyUserProfileListeners(user);
 };
 
-const fetchAndSaveUserInfo = async (accessToken: string): Promise<GoogleUser | null> => {
+export const fetchAndSaveUserInfo = async (accessToken: string): Promise<GoogleUser | null> => {
   try {
     const res = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
       headers: { Authorization: `Bearer ${accessToken}` }
@@ -200,4 +260,5 @@ const fetchAndSaveUserInfo = async (accessToken: string): Promise<GoogleUser | n
 export const logoutGoogle = () => {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  localStorage.removeItem('google_drive_tasks_file_id');
 };

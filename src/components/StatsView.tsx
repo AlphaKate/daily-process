@@ -29,7 +29,8 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks, currentDate }) => {
     : 0;
 
   // Group goals by milestone title to track personal development milestones
-  const allGoals = tasks.filter(t => t.category === 'goals');
+  const activeTasks = tasks.filter(t => !t.isDeleted);
+  const allGoals = activeTasks.filter(t => t.category === 'goals');
   const milestonesMap: Record<string, { total: number; completed: number }> = {};
   
   allGoals.forEach(g => {
@@ -43,7 +44,7 @@ export const StatsView: React.FC<StatsViewProps> = ({ tasks, currentDate }) => {
     }
   });
 
-  const allCompletedEver = tasks.filter(t => t.completed).length;
+  const allCompletedEver = activeTasks.filter(t => t.completed).length;
 
   return (
     <div className="space-y-6 pb-12 animate-in fade-in duration-200">

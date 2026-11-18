@@ -76,7 +76,7 @@ export const saveStoredTasks = (tasks: Task[]): void => {
 // Check for overdue unfinished tasks from previous days
 export const checkUnfinishedPreviousTasks = (currentDate: string): Task[] => {
   const allTasks = getStoredTasks();
-  return allTasks.filter(t => !t.completed && t.date < currentDate);
+  return allTasks.filter(t => !t.isDeleted && !t.completed && t.date < currentDate);
 };
 
 // Rollover tasks to current date
@@ -97,7 +97,7 @@ export const rolloverTasksToDate = (taskIds: string[], targetDate: string): void
 };
 
 export const calculateDayStats = (date: string, tasks: Task[]): DayStats => {
-  const dayTasks = tasks.filter(t => t.date === date);
+  const dayTasks = tasks.filter(t => !t.isDeleted && t.date === date);
   const completed = dayTasks.filter(t => t.completed);
 
   const mustDo = dayTasks.filter(t => t.category === 'must_do');

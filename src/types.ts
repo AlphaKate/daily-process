@@ -14,6 +14,7 @@ export interface Task {
   milestoneTitle?: string;
   goalDocumentId?: string;
   rolledOverFrom?: string; // original date if rolled over
+  isDeleted?: boolean; // soft-delete for reliable cross-device sync
   createdAt: string;
   updatedAt: string;
 }

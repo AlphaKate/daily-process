@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Task, TaskCategory, AppSettings } from './types';
 import {
   getStoredTasks,
@@ -14,12 +14,13 @@ import {
   logoutGoogle,
   getStoredToken,
   getStoredGoogleUser,
+  onUserProfileUpdated,
   GoogleUser,
   GOOGLE_DRIVE_FOLDER_ID
 } from './services/googleAuth';
 import {
   syncDriveGoalsToTasks,
-  saveTasksToDriveFile,
+  scheduleSaveTasksToDrive,
   loadTasksFromDriveFile
 } from './services/googleDrive';
 import { syncCalendarEventsToTasks } from './services/googleCalendar';
@@ -57,6 +58,8 @@ export const App: React.FC = () => {
   const [overdueTasks, setOverdueTasks] = useState<Task[]>([]);
   const [isMorningReviewOpen, setIsMorningReviewOpen] = useState(false);
 
+  const lastSyncTimeRef = useRef<number>(0);
+
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setNotification({ message, type });
     setTimeout(() => {
@@ -71,14 +74,14 @@ export const App: React.FC = () => {
 
     const token = getStoredToken();
     if (token) {
-      saveTasksToDriveFile(GOOGLE_DRIVE_FOLDER_ID, token.access_token, updated);
+      scheduleSaveTasksToDrive(GOOGLE_DRIVE_FOLDER_ID, token.access_token, updated);
     }
   }, []);
 
-  const syncGoogleServices = useCallback(async (tokenStr?: string) => {
+  const syncGoogleServices = useCallback(async (tokenStr?: string, silent: boolean = false) => {
     const tokenObj = tokenStr ? { access_token: tokenStr } : getStoredToken();
     if (!tokenObj) {
-      showToast('נא להתחבר תחילה לחשבון Google', 'error');
+      if (!silent) showToast('נא להתחבר תחילה לחשבון Google', 'error');
       return;
     }
 
@@ -96,15 +99,28 @@ export const App: React.FC = () => {
           tokenObj.access_token
         );
         if (driveStoredTasks && driveStoredTasks.length > 0) {
-          // Merge tasks: keep newer or non-existing
+          // Merge tasks: keep newer by updatedAt, respect isDeleted tombstones
           const taskMap = new Map<string, Task>();
-          driveStoredTasks.forEach(t => taskMap.set(t.id, t));
-          mergedTasks.forEach(t => {
-            const existing = taskMap.get(t.id);
-            if (!existing || (t.updatedAt && existing.updatedAt && t.updatedAt > existing.updatedAt)) {
-              taskMap.set(t.id, t);
+          
+          // Seed with current local tasks
+          currentTasks.forEach(t => taskMap.set(t.id, t));
+
+          // Merge each remote task
+          driveStoredTasks.forEach(remoteTask => {
+            const localTask = taskMap.get(remoteTask.id);
+            if (!localTask) {
+              if (!remoteTask.isDeleted) {
+                taskMap.set(remoteTask.id, remoteTask);
+              }
+            } else {
+              const localTime = new Date(localTask.updatedAt || 0).getTime();
+              const remoteTime = new Date(remoteTask.updatedAt || 0).getTime();
+              if (remoteTime > localTime) {
+                taskMap.set(remoteTask.id, remoteTask);
+              }
             }
           });
+
           mergedTasks = Array.from(taskMap.values());
         }
       } catch (driveFileErr) {
@@ -144,19 +160,24 @@ export const App: React.FC = () => {
 
       // Save master merged tasks locally and back to Drive
       persistTasks(mergedTasks);
+      lastSyncTimeRef.current = Date.now();
 
-      const msgParts = [];
-      if (calendarCount > 0) msgParts.push(`${calendarCount} פגישות מיומן Google`);
-      if (driveCount > 0) msgParts.push(`${driveCount} יעדים מ-Drive`);
-      
-      if (msgParts.length > 0) {
-        showToast(`סונכרנו בהצלחה: ${msgParts.join(', ')}`, 'success');
-      } else {
-        showToast('הנתונים סונכרנו בהצלחה מול Google Drive!', 'success');
+      if (!silent) {
+        const msgParts = [];
+        if (calendarCount > 0) msgParts.push(`${calendarCount} פגישות מיומן Google`);
+        if (driveCount > 0) msgParts.push(`${driveCount} יעדים מ-Drive`);
+        
+        if (msgParts.length > 0) {
+          showToast(`סונכרנו בהצלחה: ${msgParts.join(', ')}`, 'success');
+        } else {
+          showToast('הנתונים סונכרנו בהצלחה מול Google Drive!', 'success');
+        }
       }
     } catch (err: any) {
       console.error('Overall Google sync error:', err);
-      showToast(err.message || 'שגיאה בסנכרון מול Google', 'error');
+      if (!silent) {
+        showToast(err.message || 'שגיאה בסנכרון מול Google', 'error');
+      }
     } finally {
       setIsSyncing(false);
     }
@@ -193,9 +214,16 @@ export const App: React.FC = () => {
     setSettings(updatedSettings);
     saveAppSettings(updatedSettings);
 
-    // Setup Google Token Client
+    // Subscribe to Google User Profile updates
+    const unsubscribeProfile = onUserProfileUpdated((user) => {
+      setGoogleUser(user);
+    });
+
+    // Setup Google Token Client & check URL hash for token from redirect
+    let tokenHandled = false;
     initGoogleTokenClient(
       (token) => {
+        tokenHandled = true;
         setGoogleUser(getStoredGoogleUser() || { email: 'מחובר ל-Google', name: 'משתמש Google' });
         showToast('התחברת בהצלחה לחשבון Google!', 'success');
         syncGoogleServices(token.access_token);
@@ -206,11 +234,40 @@ export const App: React.FC = () => {
       }
     );
 
-    // If already has stored token, run initial sync
-    const stored = getStoredToken();
-    if (stored) {
-      syncGoogleServices(stored.access_token);
+    // If already has stored token and wasn't just handled by URL redirect, run initial sync
+    if (!tokenHandled) {
+      const stored = getStoredToken();
+      if (stored) {
+        syncGoogleServices(stored.access_token, true);
+      }
     }
+
+    return () => {
+      unsubscribeProfile();
+    };
+  }, [syncGoogleServices]);
+
+  // Auto-sync when user returns to app / tab becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const now = Date.now();
+        // Sync if at least 30 seconds passed since last sync
+        if (now - lastSyncTimeRef.current > 30000) {
+          const stored = getStoredToken();
+          if (stored) {
+            syncGoogleServices(stored.access_token, true);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+    };
   }, [syncGoogleServices]);
 
   const handleToggleTheme = () => {
@@ -321,8 +378,15 @@ export const App: React.FC = () => {
 
   const handleConfirmDelete = () => {
     if (!taskToDelete) return;
-    const updated = tasks.filter(t => t.id !== taskToDelete.id);
+    const now = new Date().toISOString();
+    // Soft-delete to ensure tombstone propagates cleanly to Google Drive without zombie resurrects
+    const updated = tasks.map(t =>
+      t.id === taskToDelete.id
+        ? { ...t, isDeleted: true, updatedAt: now }
+        : t
+    );
     persistTasks(updated);
+    showToast(`המשימה "${taskToDelete.title}" נמחקה בהצלחה`, 'success');
     setTaskToDelete(null);
   };
 
@@ -357,7 +421,7 @@ export const App: React.FC = () => {
     setCurrentDate(today);
   };
 
-  const filteredTasksForDate = tasks.filter(t => t.date === currentDate);
+  const filteredTasksForDate = tasks.filter(t => !t.isDeleted && t.date === currentDate);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
