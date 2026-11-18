@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Task, TaskCategory } from '../types';
-import { X, Link as LinkIcon, Milestone, AlertCircle } from 'lucide-react';
+import { X, Link as LinkIcon, Milestone, AlertCircle, FileText, Clock } from 'lucide-react';
 
 interface TaskModalProps {
   isOpen: boolean;
@@ -10,6 +10,17 @@ interface TaskModalProps {
   onClose: () => void;
   onSave: (taskData: Partial<Task>) => void;
 }
+
+const COMMON_MILESTONES = [
+  'Machine Learning',
+  'GoogleLM',
+  'פיתוח אישי',
+  'סיום קורס פייתון',
+  'כושר ובריאות',
+  'אנגלית מקצועית'
+];
+
+const DURATION_PRESETS = [15, 30, 45, 60, 90];
 
 export const TaskModal: React.FC<TaskModalProps> = ({
   isOpen,
@@ -54,11 +65,33 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Detect Google Doc ID if present
+  let existingDocId = initialTask?.goalDocumentId;
+  const matchDocId = link.match(/\/document\/d\/([a-zA-Z0-9-_]+)/);
+  if (matchDocId && matchDocId[1]) {
+    existingDocId = matchDocId[1];
+  }
+
+  const googleDocPreviewUrl =
+    link.includes('docs.google.com')
+      ? link
+      : existingDocId
+      ? `https://docs.google.com/document/d/${existingDocId}/edit`
+      : null;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
       setError('נא להזין כותרת למשימה');
       return;
+    }
+
+    let resolvedGoalDocId = initialTask?.goalDocumentId;
+    if (link) {
+      const match = link.match(/\/document\/d\/([a-zA-Z0-9-_]+)/);
+      if (match && match[1]) {
+        resolvedGoalDocId = match[1];
+      }
     }
 
     onSave({
@@ -70,17 +103,23 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       durationMinutes: durationMinutes ? Number(durationMinutes) : undefined,
       milestoneTitle: milestoneTitle.trim() || undefined,
       link: link.trim() || undefined,
+      goalDocumentId: resolvedGoalDocId,
     });
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-            {initialTask ? 'עריכת משימה' : 'הוספת משימה חדשה'}
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <span>{initialTask ? 'עריכת משימה' : 'הוספת משימה חדשה'}</span>
+            {category === 'goals' && (
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300">
+                יעד התפתחות
+              </span>
+            )}
           </h2>
           <button
             onClick={onClose}
@@ -158,80 +197,143 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
           {/* Milestone for Goals */}
           {category === 'goals' && (
-            <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-3.5 rounded-2xl border border-emerald-200/70 dark:border-emerald-800/50 space-y-2">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
-                <Milestone className="w-4 h-4" />
-                <span>שיוך לאבן דרך בהתפתחות האישית</span>
+            <div className="bg-emerald-50/60 dark:bg-emerald-950/20 p-3.5 rounded-2xl border border-emerald-200/80 dark:border-emerald-800/60 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                  <Milestone className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>אבן דרך / נושא יעד (Milestone)</span>
+                </div>
               </div>
+
               <input
                 type="text"
                 value={milestoneTitle}
                 onChange={(e) => setMilestoneTitle(e.target.value)}
-                placeholder="למשל: שיפור כושר גופני, סיום קורס פייתון, קריאת ספר..."
-                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 rounded-xl text-xs dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                placeholder="למשל: Machine Learning / GoogleLM או שיפור כושר..."
+                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 rounded-xl text-xs dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
               />
+
+              {/* Quick suggestions chips */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[10px] text-slate-500 dark:text-slate-400">הצעות מהירות:</span>
+                {COMMON_MILESTONES.map((chip) => (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => setMilestoneTitle(chip)}
+                    className="text-[10px] px-2 py-0.5 rounded-md bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700/60 hover:bg-emerald-100/70 transition-colors"
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
           {/* Time, Duration & Date */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                תאריך
-              </label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                שעה (אופציונלי)
-              </label>
-              <div className="relative">
+          <div className="space-y-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  תאריך
+                </label>
                 <input
-                  type="time"
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none"
                 />
               </div>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                משך זמן בדקות
-              </label>
-              <div className="relative">
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  שעה (אופציונלי)
+                </label>
+                <div className="relative">
+                  <input
+                    type="time"
+                    value={time}
+                    onChange={(e) => setTime(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                  <span>משך זמן (דקות)</span>
+                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                </label>
                 <input
                   type="number"
                   min="5"
                   step="5"
                   value={durationMinutes}
                   onChange={(e) => setDurationMinutes(e.target.value)}
-                  placeholder="למשל: 30"
+                  placeholder="למשל: 45"
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none"
                 />
               </div>
             </div>
+
+            {/* Quick Duration Preset Pills */}
+            <div className="flex items-center gap-1.5 pt-0.5">
+              <span className="text-[10px] text-slate-500 dark:text-slate-400">משך זמן מהיר:</span>
+              {DURATION_PRESETS.map((mins) => (
+                <button
+                  key={mins}
+                  type="button"
+                  onClick={() => setDurationMinutes(String(mins))}
+                  className={`text-[10px] px-2 py-0.5 rounded-md border transition-colors ${
+                    durationMinutes === String(mins)
+                      ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700 font-bold'
+                      : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  ⏱️ {mins} דק׳
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Link */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              לינק למסמך / קישור רלוונטי
-            </label>
+          {/* Link to Google Doc or External Resource */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                קישור למסמך Google Docs או מקור המשימה
+              </label>
+              {googleDocPreviewUrl && (
+                <a
+                  href={googleDocPreviewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] text-blue-600 dark:text-blue-400 hover:underline font-medium"
+                >
+                  <FileText className="w-3 h-3" />
+                  <span>פתח מסמך מקושר ↗</span>
+                </a>
+              )}
+            </div>
+
             <div className="relative">
               <input
                 type="url"
                 value={link}
                 onChange={(e) => setLink(e.target.value)}
-                placeholder="https://drive.google.com/..."
+                placeholder="https://docs.google.com/document/d/..."
                 className="w-full px-3 py-2 pl-8 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none"
               />
               <LinkIcon className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
             </div>
+
+            {existingDocId && (
+              <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                <span>מזהה Google Doc מקושר:</span>
+                <code className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-mono text-[9px]">
+                  {existingDocId}
+                </code>
+              </div>
+            )}
           </div>
 
           {/* Description */}

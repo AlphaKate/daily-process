@@ -3,7 +3,8 @@ export const GOOGLE_DRIVE_FOLDER_ID = '1skpegshPUHuIYPVuxHQdpSpXeIwGmDBd';
 
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/calendar.readonly'
+  'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/documents'
 ].join(' ');
 
 const TOKEN_KEY = 'google_oauth_token_v1';

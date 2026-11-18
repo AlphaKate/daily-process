@@ -1,5 +1,8 @@
 import { Task } from '../types';
 import { getTodayDateString } from './storage';
+import { fetchGoogleDoc, parseDocForGoals, updateGoogleDocGoalStatus } from './googleDocs';
+
+export { fetchGoogleDoc, parseDocForGoals, updateGoogleDocGoalStatus };
 
 export interface DriveItem {
   id: string;
@@ -57,33 +60,35 @@ export const fetchFolderContents = async (
 
 /**
  * Recursively scans the app folder to discover milestones (subfolders like "Machine Learning")
- * and goals documents/links (like "GoogleLM")
+ * and goals documents/links (especially Google Docs: application/vnd.google-apps.document)
  */
 export const scanDriveForGoals = async (
   rootFolderId: string,
   accessToken: string
 ): Promise<Array<{ milestone: string; item: DriveItem }>> => {
-  const rootItems = await fetchFolderContents(rootFolderId, accessToken);
   const discovered: Array<{ milestone: string; item: DriveItem }> = [];
 
-  for (const item of rootItems) {
-    // Ignore internal sync file
-    if (item.name === TASKS_FILE_NAME) continue;
+  const scanFolder = async (folderId: string, currentMilestone: string, depth: number = 0) => {
+    if (depth > 4) return;
+    try {
+      const items = await fetchFolderContents(folderId, accessToken);
+      for (const item of items) {
+        // Ignore internal tasks sync file
+        if (item.name === TASKS_FILE_NAME) continue;
 
-    if (item.mimeType === 'application/vnd.google-apps.folder') {
-      const subItems = await fetchFolderContents(item.id, accessToken);
-      if (subItems.length > 0) {
-        for (const sub of subItems) {
-          discovered.push({ milestone: item.name, item: sub });
+        if (item.mimeType === 'application/vnd.google-apps.folder') {
+          const milestoneName = currentMilestone === 'יעדים כלליים' ? item.name : `${currentMilestone} / ${item.name}`;
+          await scanFolder(item.id, milestoneName, depth + 1);
+        } else {
+          discovered.push({ milestone: currentMilestone, item });
         }
-      } else {
-        discovered.push({ milestone: item.name, item });
       }
-    } else {
-      discovered.push({ milestone: 'יעדים כלליים', item });
+    } catch (err) {
+      console.warn(`Error scanning folder ${folderId}:`, err);
     }
-  }
+  };
 
+  await scanFolder(rootFolderId, 'יעדים כלליים', 0);
   return discovered;
 };
 
@@ -285,7 +290,8 @@ export const loadTasksFromDriveFile = async (
 };
 
 /**
- * Syncs Drive files (like Machine Learning / GoogleLM) into Goals tasks
+ * Syncs Drive files and Google Docs into Goals tasks.
+ * For Google Docs, extracts milestones, sub-tasks, duration, and completion statuses.
  */
 export const syncDriveGoalsToTasks = async (
   rootFolderId: string,
@@ -299,6 +305,46 @@ export const syncDriveGoalsToTasks = async (
 
   for (const entry of driveGoals) {
     const { milestone, item } = entry;
+    const isGoogleDoc = item.mimeType === 'application/vnd.google-apps.document';
+
+    if (isGoogleDoc) {
+      try {
+        const fetchedDoc = await fetchGoogleDoc(item.id, accessToken);
+        if (fetchedDoc) {
+          const docTitle = fetchedDoc.title || item.name.replace(/\.[^/.]+$/, '');
+          const parsedSubTasks = parseDocForGoals(
+            docTitle,
+            fetchedDoc.body || fetchedDoc.rawText,
+            item.id,
+            milestone,
+            targetDate
+          );
+
+          if (parsedSubTasks.length > 0) {
+            for (const pTask of parsedSubTasks) {
+              const alreadyExists = existingTasks.some(
+                t => t.id === pTask.id || (t.goalDocumentId === item.id && t.title === pTask.title)
+              ) || createdOrUpdated.some(
+                t => t.id === pTask.id || (t.goalDocumentId === item.id && t.title === pTask.title)
+              );
+
+              if (!alreadyExists) {
+                // Ensure link points to Google Docs editor or webViewLink
+                if (!pTask.link && item.webViewLink) {
+                  pTask.link = item.webViewLink;
+                }
+                createdOrUpdated.push(pTask);
+              }
+            }
+            continue; // Successfully handled Google Doc with granular tasks
+          }
+        }
+      } catch (docErr) {
+        console.warn(`Failed to parse Google Doc "${item.name}" (${item.id}):`, docErr);
+      }
+    }
+
+    // Fallback for non-doc files or when doc parsing produced no tasks
     const existing = existingTasks.find(
       t => t.goalDocumentId === item.id || (t.title.includes(item.name) && t.category === 'goals')
     );
