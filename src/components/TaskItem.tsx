@@ -1,6 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Task } from '../types';
-import { Clock, ExternalLink, Milestone, RotateCcw, Edit2, Trash2, Check } from 'lucide-react';
+import {
+  Clock,
+  ExternalLink,
+  Milestone,
+  RotateCcw,
+  Edit2,
+  Trash2,
+  Check,
+  FileText,
+  Sparkles
+} from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface TaskItemProps {
@@ -16,20 +26,40 @@ export const TaskItem: React.FC<TaskItemProps> = ({
   onEdit,
   onDeleteRequest,
 }) => {
+  const [justCompleted, setJustCompleted] = useState(false);
+
   const handleToggle = () => {
-    // If completing a Goal or Must Do, celebrate with a light confetti effect!
-    if (!task.completed && (task.category === 'goals' || task.category === 'must_do')) {
-      try {
-        confetti({
-          particleCount: 40,
-          spread: 60,
-          origin: { y: 0.8 },
-          colors: task.category === 'goals' ? ['#10b981', '#06b6d4', '#3b82f6'] : ['#f43f5e', '#fb923c', '#e11d48']
-        });
-      } catch {
-        // Safe fallback
+    // If completing a Goal or Must Do, celebrate with confetti effect!
+    if (!task.completed) {
+      if (task.category === 'goals') {
+        try {
+          confetti({
+            particleCount: 55,
+            spread: 70,
+            origin: { y: 0.75 },
+            colors: ['#10b981', '#06b6d4', '#3b82f6', '#34d399', '#fbbf24']
+          });
+        } catch {
+          // Safe fallback
+        }
+        setJustCompleted(true);
+        setTimeout(() => {
+          setJustCompleted(false);
+        }, 3200);
+      } else if (task.category === 'must_do') {
+        try {
+          confetti({
+            particleCount: 40,
+            spread: 60,
+            origin: { y: 0.8 },
+            colors: ['#f43f5e', '#fb923c', '#e11d48']
+          });
+        } catch {
+          // Safe fallback
+        }
       }
     }
+
     onToggleComplete(task);
   };
 
@@ -64,11 +94,26 @@ export const TaskItem: React.FC<TaskItemProps> = ({
   };
 
   const categoryStyle = getCategoryStyles();
+  const isGoal = task.category === 'goals';
+
+  // Compute direct Google Doc URL if present
+  const docUrl =
+    task.link ||
+    (task.goalDocumentId ? `https://docs.google.com/document/d/${task.goalDocumentId}/edit` : undefined);
+  const isGoogleDoc = Boolean(
+    task.goalDocumentId || (docUrl && docUrl.includes('docs.google.com'))
+  );
 
   return (
     <div
-      className={`group relative bg-white dark:bg-slate-800/90 rounded-2xl p-4 shadow-sm hover:shadow-md border border-slate-200/80 dark:border-slate-700/80 transition-all duration-200 ${categoryStyle.border} ${
-        task.completed ? 'opacity-70 bg-slate-50/70 dark:bg-slate-850' : ''
+      className={`group relative bg-white dark:bg-slate-800/90 rounded-2xl p-4 shadow-sm hover:shadow-md border border-slate-200/80 dark:border-slate-700/80 transition-all duration-200 ${
+        categoryStyle.border
+      } ${
+        task.completed
+          ? 'opacity-80 bg-slate-50/70 dark:bg-slate-850'
+          : isGoal
+          ? 'hover:border-emerald-300 dark:hover:border-emerald-700'
+          : ''
       }`}
     >
       <div className="flex items-start gap-3">
@@ -81,18 +126,28 @@ export const TaskItem: React.FC<TaskItemProps> = ({
               ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm'
               : `bg-transparent ${categoryStyle.checkboxBorder} hover:scale-105`
           }`}
-          aria-label={task.completed ? "סמן כלא בוצע" : "סמן כבוצע"}
+          aria-label={task.completed ? 'סמן כלא בוצע' : 'סמן כבוצע'}
         >
           {task.completed && <Check className="w-4 h-4 stroke-[3]" />}
         </button>
 
         {/* Content details */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center flex-wrap gap-2 mb-1">
+          <div className="flex items-center flex-wrap gap-2 mb-1.5">
             {/* Category tag */}
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${categoryStyle.badgeBg}`}>
+            <span
+              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${categoryStyle.badgeBg}`}
+            >
               {categoryStyle.badgeText}
             </span>
+
+            {/* Duration pill (⏱️ 45 דק׳) */}
+            {task.durationMinutes && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80">
+                <span>⏱️</span>
+                <span>{task.durationMinutes} דק׳</span>
+              </span>
+            )}
 
             {/* Rollover badge if moved from previous day */}
             {task.rolledOverFrom && !task.completed && (
@@ -107,8 +162,28 @@ export const TaskItem: React.FC<TaskItemProps> = ({
               <span className="flex items-center gap-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/70 px-2 py-0.5 rounded-md">
                 <Clock className="w-3 h-3 text-slate-400" />
                 {task.time}
-                {task.durationMinutes ? ` (${task.durationMinutes} דק׳)` : ''}
               </span>
+            )}
+
+            {/* Completed celebration & Google Doc update indicator */}
+            {task.completed && isGoal && (
+              <>
+                {justCompleted ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/80 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700 animate-pulse shadow-sm">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <Sparkles className="w-3 h-3 text-emerald-600 dark:text-emerald-300" />
+                    <span>מתעדכן במסמך Google Docs...</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-md border border-emerald-200/70 dark:border-emerald-800/70">
+                    <Check className="w-3 h-3 text-emerald-500 stroke-[2.5]" />
+                    <span>סונכרן למסמך Google Docs</span>
+                  </span>
+                )}
+              </>
             )}
           </div>
 
@@ -130,24 +205,34 @@ export const TaskItem: React.FC<TaskItemProps> = ({
             </p>
           )}
 
-          {/* Metadata footer: Milestone & Link */}
-          {(task.milestoneTitle || task.link) && (
-            <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-700/50 flex flex-wrap items-center gap-3 text-xs">
+          {/* Metadata footer: Milestone Badge & Direct Google Doc / Link */}
+          {(task.milestoneTitle || docUrl) && (
+            <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-700/50 flex flex-wrap items-center gap-2 text-xs">
+              {/* Milestone badge (e.g. 'Machine Learning / GoogleLM') */}
               {task.milestoneTitle && (
-                <div className="flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-medium">
-                  <Milestone className="w-3.5 h-3.5" />
-                  <span>{task.milestoneTitle}</span>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold shadow-xs">
+                  <Milestone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span className="truncate max-w-[240px] sm:max-w-none">{task.milestoneTitle}</span>
                 </div>
               )}
-              {task.link && (
+
+              {/* Direct Link to Google Doc or External Link */}
+              {docUrl && (
                 <a
-                  href={task.link}
+                  href={docUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-sky-600 dark:text-sky-400 hover:underline"
+                  onClick={(e) => e.stopPropagation()}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors shadow-xs ${
+                    isGoogleDoc
+                      ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/70 hover:bg-blue-100 dark:hover:bg-blue-900/60 hover:text-blue-900 dark:hover:text-blue-100'
+                      : 'bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                  title={isGoogleDoc ? 'פתח מסמך ב-Google Docs (נפתח בכרטיסייה חדשה)' : 'פתח קישור מקור'}
                 >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>קישור למסמך / מקור</span>
+                  <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <span>{isGoogleDoc ? 'פתח ב-Google Docs' : 'קישור למסמך'}</span>
+                  <ExternalLink className="w-3 h-3 opacity-75" />
                 </a>
               )}
             </div>
