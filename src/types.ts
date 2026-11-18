@@ -13,6 +13,7 @@ export interface Task {
   link?: string;
   milestoneTitle?: string;
   goalDocumentId?: string;
+  sourceList?: string; // e.g. 'סופר' or other list name
   rolledOverFrom?: string; // original date if rolled over
   isDeleted?: boolean; // soft-delete for reliable cross-device sync
   createdAt: string;

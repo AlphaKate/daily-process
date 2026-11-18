@@ -25,6 +25,7 @@ import {
 } from './services/googleDrive';
 import { updateGoogleDocGoalStatus } from './services/googleDocs';
 import { syncCalendarEventsToTasks } from './services/googleCalendar';
+import { syncSuperListWithDrive } from './services/superListStorage';
 import { checkUrlForMicrosoftToken, getStoredMicrosoftToken } from './services/microsoftAuth';
 import { getSelectedToDoList, updateMicrosoftTaskStatus } from './services/microsoftToDo';
 import { Header } from './components/Header';
@@ -165,6 +166,18 @@ export const App: React.FC = () => {
         console.warn('Google Drive sync warning:', driveErr);
       }
 
+      // 4. Sync Super List (To Do) -> Drive
+      let superCount = 0;
+      try {
+        const superResult = await syncSuperListWithDrive(
+          GOOGLE_DRIVE_FOLDER_ID,
+          tokenObj.access_token
+        );
+        superCount = superResult.syncCount;
+      } catch (superErr: any) {
+        console.warn('Super list Drive sync warning:', superErr);
+      }
+
       // Save master merged tasks locally and back to Drive
       persistTasks(mergedTasks);
       lastSyncTimeRef.current = Date.now();
@@ -173,6 +186,7 @@ export const App: React.FC = () => {
         const msgParts = [];
         if (calendarCount > 0) msgParts.push(`${calendarCount} פגישות מיומן Google`);
         if (driveCount > 0) msgParts.push(`${driveCount} יעדים מ-Drive`);
+        if (superCount > 0) msgParts.push(`רשימת סופר (${superCount} פריטים)`);
         
         if (msgParts.length > 0) {
           showToast(`סונכרנו בהצלחה: ${msgParts.join(', ')}`, 'success');

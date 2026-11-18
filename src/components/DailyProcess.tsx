@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { Task, TaskCategory } from '../types';
 import { TaskItem } from './TaskItem';
 import { GoalsTimelineModal } from './GoalsTimelineModal';
+import { SuperListModal } from './SuperListModal';
 import { getStoredTasks, saveStoredTasks } from '../services/storage';
+import { getSuperListItems } from '../services/superListStorage';
 import {
   ChevronDown,
   ChevronUp,
@@ -53,6 +55,8 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
   const [showDoneSection, setShowDoneSection] = useState(true);
   const [goalsViewMode, setGoalsViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
+  const [isSuperListModalOpen, setIsSuperListModalOpen] = useState(false);
+  const [superItemsCount, setSuperItemsCount] = useState(() => getSuperListItems().length);
   const [milestoneFilter, setMilestoneFilter] = useState<string>('all');
   const [, setLocalTasksVersion] = useState(0);
   // Fallback to getStoredTasks() if allTasks prop is not passed
@@ -580,18 +584,31 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
             </div>
           </div>
 
-          {/* Action Bar: Direct Link to 'סופר' and 'הוסף' */}
+          {/* Action Bar: To Do List Modal Button, External Link, and 'הוסף' */}
           <div className="flex items-center flex-wrap gap-1.5 self-end sm:self-auto">
-            {/* Direct 1-tap link to "סופר" in Microsoft To Do */}
+            {/* Embedded To Do List Modal button */}
+            <button
+              type="button"
+              onClick={() => setIsSuperListModalOpen(true)}
+              className="p-1.5 px-2.5 text-xs text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/50 rounded-xl border border-sky-200 dark:border-sky-800 flex items-center gap-1.5 font-semibold transition-colors shadow-2xs cursor-pointer"
+              title="הצג את רשימת סופר (To Do) ללא צורך בהתחברות"
+            >
+              <ListTodo className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+              <span>רשימת To Do ("סופר")</span>
+              <span className="text-[10px] bg-sky-200/80 dark:bg-sky-900 text-sky-800 dark:text-sky-200 px-1.5 py-0.2 rounded-full font-bold">
+                {superItemsCount}
+              </span>
+            </button>
+
+            {/* Direct link to "סופר" in Microsoft To Do (optional shortcut) */}
             <a
               href="https://to-do.microsoft.com/sharing?InvitationToken=cSHAtsnUNTW0E2q3AEdlYmuhB8FZ2Q3tILzClg0YBCn-KrWUF9s9KrPQZJrtOsYlCiEN015c05_7oQPJaeCRkA"
               target="_blank"
               rel="noopener noreferrer"
-              className="p-1.5 text-xs text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/50 rounded-xl border border-sky-200 dark:border-sky-800 flex items-center gap-1 font-semibold transition-colors shadow-2xs"
-              title="פתח את רשימת סופר באפליקציית Microsoft To Do"
+              className="p-1.5 text-xs text-slate-500 hover:text-sky-600 dark:text-slate-400 dark:hover:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/40 rounded-xl border border-slate-200/70 dark:border-slate-800 flex items-center gap-1 transition-colors"
+              title="פתח באפליקציית Microsoft To Do"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              <span>פתח "סופר" ב-To Do</span>
             </a>
 
             {/* Quick Add Casual Task */}
@@ -671,6 +688,27 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
           onQuickAddTask('goals');
         }}
         onRescheduleGoal={handleReschedule}
+      />
+
+      {/* 6. SUPER TO DO LIST MODAL */}
+      <SuperListModal
+        isOpen={isSuperListModalOpen}
+        onClose={() => {
+          setIsSuperListModalOpen(false);
+          setSuperItemsCount(getSuperListItems().length);
+        }}
+        currentDate={currentDate}
+        onItemImported={(title) => {
+          setLocalTasksVersion(v => v + 1);
+          setSuperItemsCount(getSuperListItems().length);
+          const stored = getStoredTasks();
+          const imported = stored.find(
+            t => t.title === title && t.date === currentDate && t.category === 'casual'
+          );
+          if (imported && _onTasksSynced) {
+            _onTasksSynced([imported], []);
+          }
+        }}
       />
 
     </div>
