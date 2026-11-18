@@ -23,6 +23,7 @@ import {
   scheduleSaveTasksToDrive,
   loadTasksFromDriveFile
 } from './services/googleDrive';
+import { updateGoogleDocGoalStatus } from './services/googleDocs';
 import { syncCalendarEventsToTasks } from './services/googleCalendar';
 import { Header } from './components/Header';
 import { DailyProcess } from './components/DailyProcess';
@@ -325,6 +326,17 @@ export const App: React.FC = () => {
         : t
     );
     persistTasks(updated);
+
+    // Sync status back to connected Google Doc if applicable
+    const currentToken = getStoredToken();
+    if (task.goalDocumentId && currentToken?.access_token) {
+      updateGoogleDocGoalStatus(
+        task.goalDocumentId,
+        currentToken.access_token,
+        task.title,
+        nextCompleted
+      ).catch(e => console.warn('Could not sync status to Google Doc:', e));
+    }
   };
 
   const handleOpenAddTask = (category: TaskCategory = 'must_do') => {
@@ -402,6 +414,20 @@ export const App: React.FC = () => {
           ? { ...t, completed: true, completedAt: now, updatedAt: now }
           : t
       );
+
+      const currentToken = getStoredToken();
+      if (currentToken?.access_token) {
+        tasks
+          .filter(t => completedTaskIds.includes(t.id) && t.goalDocumentId)
+          .forEach(t => {
+            updateGoogleDocGoalStatus(
+              t.goalDocumentId!,
+              currentToken.access_token,
+              t.title,
+              true
+            ).catch(() => {});
+          });
+      }
     }
 
     if (selectedTaskIds.length > 0) {
