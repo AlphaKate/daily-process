@@ -25,7 +25,8 @@ import {
   ArrowRightLeft,
   Milestone as MilestoneIcon,
   ListTodo,
-  RefreshCw
+  RefreshCw,
+  ExternalLink
 } from 'lucide-react';
 
 interface DailyProcessProps {
@@ -687,6 +688,18 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncingToDo ? 'animate-spin' : ''}`} />
               <span>{isSyncingToDo ? 'מסנכרן...' : 'סנכרן To Do'}</span>
             </button>
+
+            {/* Direct 1-tap link to "סופר" in Microsoft To Do */}
+            <a
+              href="https://to-do.microsoft.com/sharing?InvitationToken=cSHAtsnUNTW0E2q3AEdlYmuhB8FZ2Q3tILzClg0YBCn-KrWUF9s9KrPQZJrtOsYlCiEN015c05_7oQPJaeCRkA"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-1.5 text-xs text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/50 rounded-xl border border-sky-200 dark:border-sky-800 flex items-center gap-1 font-semibold transition-colors shadow-2xs"
+              title="פתח את רשימת סופר באפליקציית Microsoft To Do"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>פתח "סופר" ב-To Do</span>
+            </a>
 
             {/* Quick Add Casual Task */}
             <button
