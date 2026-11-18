@@ -17,7 +17,11 @@ import {
   GoogleUser,
   GOOGLE_DRIVE_FOLDER_ID
 } from './services/googleAuth';
-import { syncDriveGoalsToTasks } from './services/googleDrive';
+import {
+  syncDriveGoalsToTasks,
+  saveTasksToDriveFile,
+  loadTasksFromDriveFile
+} from './services/googleDrive';
 import { syncCalendarEventsToTasks } from './services/googleCalendar';
 import { Header } from './components/Header';
 import { DailyProcess } from './components/DailyProcess';
@@ -60,6 +64,17 @@ export const App: React.FC = () => {
     }, 6000);
   };
 
+  // Helper to persist tasks both locally and to Google Drive if connected
+  const persistTasks = useCallback((updated: Task[]) => {
+    setTasks(updated);
+    saveStoredTasks(updated);
+
+    const token = getStoredToken();
+    if (token) {
+      saveTasksToDriveFile(GOOGLE_DRIVE_FOLDER_ID, token.access_token, updated);
+    }
+  }, []);
+
   const syncGoogleServices = useCallback(async (tokenStr?: string) => {
     const tokenObj = tokenStr ? { access_token: tokenStr } : getStoredToken();
     if (!tokenObj) {
@@ -71,54 +86,73 @@ export const App: React.FC = () => {
     let calendarCount = 0;
     let driveCount = 0;
     const currentTasks = getStoredTasks();
-    let updatedTasks = [...currentTasks];
+    let mergedTasks = [...currentTasks];
 
     try {
-      // 1. Sync Google Calendar -> Must Do
+      // 1. Pull shared cross-device tasks file from Google Drive
+      try {
+        const driveStoredTasks = await loadTasksFromDriveFile(
+          GOOGLE_DRIVE_FOLDER_ID,
+          tokenObj.access_token
+        );
+        if (driveStoredTasks && driveStoredTasks.length > 0) {
+          // Merge tasks: keep newer or non-existing
+          const taskMap = new Map<string, Task>();
+          driveStoredTasks.forEach(t => taskMap.set(t.id, t));
+          mergedTasks.forEach(t => {
+            const existing = taskMap.get(t.id);
+            if (!existing || (t.updatedAt && existing.updatedAt && t.updatedAt > existing.updatedAt)) {
+              taskMap.set(t.id, t);
+            }
+          });
+          mergedTasks = Array.from(taskMap.values());
+        }
+      } catch (driveFileErr) {
+        console.warn('Drive tasks file load warning', driveFileErr);
+      }
+
+      // 2. Sync Google Calendar -> Must Do
       try {
         const calResult = await syncCalendarEventsToTasks(
           currentDate,
           tokenObj.access_token,
-          updatedTasks
+          mergedTasks
         );
         calendarCount = calResult.newTasks.length;
         if (calResult.newTasks.length > 0) {
-          updatedTasks = [...calResult.newTasks, ...updatedTasks];
+          mergedTasks = [...calResult.newTasks, ...mergedTasks];
         }
       } catch (calErr: any) {
         console.warn('Google Calendar sync warning:', calErr);
       }
 
-      // 2. Sync Google Drive -> Goals
+      // 3. Sync Google Drive Goals -> Goals
       try {
         const driveResult = await syncDriveGoalsToTasks(
           GOOGLE_DRIVE_FOLDER_ID,
           tokenObj.access_token,
-          updatedTasks,
+          mergedTasks,
           currentDate
         );
         driveCount = driveResult.newTasks.length;
         if (driveResult.newTasks.length > 0) {
-          updatedTasks = [...driveResult.newTasks, ...updatedTasks];
+          mergedTasks = [...driveResult.newTasks, ...mergedTasks];
         }
       } catch (driveErr: any) {
         console.warn('Google Drive sync warning:', driveErr);
-        if (driveErr?.message?.includes('disabled')) {
-          showToast('יש להפעיל את Google Drive API ב-Google Cloud Console', 'error');
-        }
       }
 
-      setTasks(updatedTasks);
-      saveStoredTasks(updatedTasks);
+      // Save master merged tasks locally and back to Drive
+      persistTasks(mergedTasks);
 
       const msgParts = [];
-      if (calendarCount > 0) msgParts.push(`${calendarCount} פגישות מיומן Google נוספו ל-Must Do`);
-      if (driveCount > 0) msgParts.push(`${driveCount} יעדים מ-Google Drive סונכרנו ל-Goals`);
+      if (calendarCount > 0) msgParts.push(`${calendarCount} פגישות מיומן Google`);
+      if (driveCount > 0) msgParts.push(`${driveCount} יעדים מ-Drive`);
       
       if (msgParts.length > 0) {
-        showToast(msgParts.join(' | '), 'success');
+        showToast(`סונכרנו בהצלחה: ${msgParts.join(', ')}`, 'success');
       } else {
-        showToast('הנתונים מול Google מעודכנים במלואם!', 'success');
+        showToast('הנתונים סונכרנו בהצלחה מול Google Drive!', 'success');
       }
     } catch (err: any) {
       console.error('Overall Google sync error:', err);
@@ -126,7 +160,7 @@ export const App: React.FC = () => {
     } finally {
       setIsSyncing(false);
     }
-  }, [currentDate]);
+  }, [currentDate, persistTasks]);
 
   // Initialize data, theme, and Google Token Client
   useEffect(() => {
@@ -162,7 +196,7 @@ export const App: React.FC = () => {
     // Setup Google Token Client
     initGoogleTokenClient(
       (token) => {
-        setGoogleUser(getStoredGoogleUser());
+        setGoogleUser(getStoredGoogleUser() || { email: 'מחובר ל-Google', name: 'משתמש Google' });
         showToast('התחברת בהצלחה לחשבון Google!', 'success');
         syncGoogleServices(token.access_token);
       },
@@ -171,6 +205,12 @@ export const App: React.FC = () => {
         showToast('שגיאה בהתחברות ל-Google', 'error');
       }
     );
+
+    // If already has stored token, run initial sync
+    const stored = getStoredToken();
+    if (stored) {
+      syncGoogleServices(stored.access_token);
+    }
   }, [syncGoogleServices]);
 
   const handleToggleTheme = () => {
@@ -193,7 +233,7 @@ export const App: React.FC = () => {
     try {
       await requestGoogleLogin(
         (token) => {
-          setGoogleUser(getStoredGoogleUser());
+          setGoogleUser(getStoredGoogleUser() || { email: 'מחובר ל-Google', name: 'משתמש Google' });
           showToast('התחברת בהצלחה לחשבון Google!', 'success');
           syncGoogleServices(token.access_token);
         },
@@ -227,8 +267,7 @@ export const App: React.FC = () => {
           }
         : t
     );
-    setTasks(updated);
-    saveStoredTasks(updated);
+    persistTasks(updated);
   };
 
   const handleOpenAddTask = (category: TaskCategory = 'must_do') => {
@@ -253,8 +292,7 @@ export const App: React.FC = () => {
             }
           : t
       );
-      setTasks(updated);
-      saveStoredTasks(updated);
+      persistTasks(updated);
     } else {
       const now = new Date().toISOString();
       const newTask: Task = {
@@ -272,8 +310,7 @@ export const App: React.FC = () => {
         updatedAt: now
       };
       const updated = [newTask, ...tasks];
-      setTasks(updated);
-      saveStoredTasks(updated);
+      persistTasks(updated);
     }
   };
 
@@ -285,8 +322,7 @@ export const App: React.FC = () => {
   const handleConfirmDelete = () => {
     if (!taskToDelete) return;
     const updated = tasks.filter(t => t.id !== taskToDelete.id);
-    setTasks(updated);
-    saveStoredTasks(updated);
+    persistTasks(updated);
     setTaskToDelete(null);
   };
 
@@ -317,8 +353,7 @@ export const App: React.FC = () => {
       );
     }
 
-    setTasks(updated);
-    saveStoredTasks(updated);
+    persistTasks(updated);
     setCurrentDate(today);
   };
 

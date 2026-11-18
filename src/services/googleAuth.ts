@@ -4,9 +4,7 @@ export const GOOGLE_DRIVE_FOLDER_ID = '1skpegshPUHuIYPVuxHQdpSpXeIwGmDBd';
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/drive.readonly',
   'https://www.googleapis.com/auth/drive.file',
-  'https://www.googleapis.com/auth/calendar.readonly',
-  'https://www.googleapis.com/auth/userinfo.email',
-  'https://www.googleapis.com/auth/userinfo.profile'
+  'https://www.googleapis.com/auth/calendar.readonly'
 ].join(' ');
 
 const TOKEN_KEY = 'google_oauth_token_v1';
@@ -49,7 +47,13 @@ export const initGoogleTokenClient = (
     scope: GOOGLE_SCOPES,
     callback: async (response: any) => {
       if (response.error) {
+        console.error('Google OAuth callback error', response);
         if (savedOnError) savedOnError(response);
+        return;
+      }
+
+      if (!response.access_token) {
+        console.warn('No access_token returned by Google popup', response);
         return;
       }
 
@@ -59,8 +63,21 @@ export const initGoogleTokenClient = (
       };
 
       saveStoredToken(token);
-      await fetchAndSaveUserInfo(token.access_token);
-      if (savedOnSuccess) savedOnSuccess(token);
+
+      // Default user info so UI updates instantly
+      const fallbackUser: GoogleUser = {
+        email: 'מחובר ל-Google',
+        name: 'משתמש Google'
+      };
+      saveStoredGoogleUser(fallbackUser);
+
+      // Notify parent immediately
+      if (savedOnSuccess) {
+        savedOnSuccess(token);
+      }
+
+      // Try fetching accurate user info in the background without blocking
+      fetchAndSaveUserInfo(token.access_token).catch(() => {});
     },
   });
 
@@ -73,8 +90,7 @@ export const ensureTokenClient = async (
 ): Promise<any> => {
   if (tokenClient) return tokenClient;
 
-  // If google script not yet available on window, wait up to 4 seconds
-  let retries = 20;
+  let retries = 25;
   while (retries > 0 && (!window.google || !window.google.accounts?.oauth2)) {
     await new Promise(res => setTimeout(res, 200));
     retries--;
@@ -130,22 +146,30 @@ export const getStoredGoogleUser = (): GoogleUser | null => {
   }
 };
 
+export const saveStoredGoogleUser = (user: GoogleUser): void => {
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+};
+
 const fetchAndSaveUserInfo = async (accessToken: string): Promise<GoogleUser | null> => {
   try {
-    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    // Attempt to get user info from Google Drive about API or userinfo
+    const res = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const user: GoogleUser = {
-      email: data.email,
-      name: data.name,
-      picture: data.picture
-    };
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
-    return user;
-  } catch (err) {
-    console.error('Failed to fetch user info', err);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.user) {
+        const user: GoogleUser = {
+          email: data.user.emailAddress || 'מחובר ל-Google',
+          name: data.user.displayName || 'משתמש Google',
+          picture: data.user.photoLink
+        };
+        saveStoredGoogleUser(user);
+        return user;
+      }
+    }
+    return null;
+  } catch {
     return null;
   }
 };
