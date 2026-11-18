@@ -123,6 +123,10 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
     }
   };
 
+  // Google Calendar meetings count for today
+  const calendarTasksForDay = tasks.filter(t => !t.isDeleted && t.id.startsWith('gcal-'));
+  const calendarMeetingsCount = calendarTasksForDay.length;
+
   // Filter goals for display
   const filteredGoalsForDay =
     milestoneFilter === 'all'
@@ -139,12 +143,27 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
               <Flame className="w-4 h-4 stroke-[2.5]" />
             </div>
             <div>
-              <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <span>Must Do</span>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300">
-                  {mustDoTasks.length}
-                </span>
-              </h2>
+              <div className="flex items-center flex-wrap gap-2">
+                <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>Must Do</span>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950/80 text-rose-700 dark:text-rose-300">
+                    {mustDoTasks.length}
+                  </span>
+                </h2>
+                {calendarMeetingsCount > 0 && (
+                  <span
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shadow-2xs"
+                    title="פגישות שסונכרנו מיומן Google Calendar להיום"
+                  >
+                    <Calendar className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                    <span>
+                      {calendarMeetingsCount === 1
+                        ? 'פגישה 1 מסונכרנת'
+                        : `${calendarMeetingsCount} פגישות מסונכרנות`}
+                    </span>
+                  </span>
+                )}
+              </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 פגישות, התחייבויות קריטיות ודברים שחייבים לקרות היום
               </p>
