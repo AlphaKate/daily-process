@@ -97,3 +97,16 @@
    - תגית יומן Google ושעת פגישה מעוצבת.
    - אינדיקטור כמות פגישות מסונכרנות בכותרת ה-Must Do.
    - מניעת כפילויות ועדכון דינמי של שעות או כותרות בעת שינוי ביומן.
+
+---
+
+### שלב ה': אינטגרציה מלאה ל-Microsoft To Do עבור משימות Casual (שלב 4 - הושלם בהצלחה)
+1. **שירותי Microsoft Auth ו-Graph API (`src/services/microsoftAuth.ts` & `microsoftToDo.ts`):**
+   - אימות OAuth 2.0 מול Microsoft Identity Platform עם הפרדת Fragment מלאה מ-Google.
+   - אפשרות להגדרת Client ID גמיש בהגדרות.
+   - שליפת רשימות ומשימות To Do מ-Microsoft Graph API.
+   - עדכון סטטוס דו-כיווני בעת סימון השלמת משימה באפליקציה.
+2. **שדרוגי ממשק למשימות Casual:**
+   - מודאל בחירת רשימה `MicrosoftListModal.tsx` עם מונה משימות.
+   - כפתור חיבור וסטטוס Microsoft בראש העמוד לצד Google.
+   - תגית ייעודית ומעוצבת על גבי משימות Microsoft To Do וכפתור סנכרון מהיר.
