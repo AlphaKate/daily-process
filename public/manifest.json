@@ -13,7 +13,8 @@
       "sizes": "512x512"
     }
   ],
-  "start_url": "/",
+  "start_url": "/daily-process/",
+  "scope": "/daily-process/",
   "background_color": "#0f172a",
   "theme_color": "#10b981",
   "display": "standalone",
