@@ -10,7 +10,7 @@ import {
 } from './services/storage';
 import {
   initGoogleTokenClient,
-  requestGoogleLogin,
+  triggerGoogleLogin,
   logoutGoogle,
   getStoredToken,
   getStoredGoogleUser,
@@ -229,9 +229,9 @@ export const App: React.FC = () => {
     saveAppSettings(updatedSettings);
   };
 
-  const handleConnectGoogle = async () => {
+  const handleConnectGoogle = () => {
     try {
-      await requestGoogleLogin(
+      triggerGoogleLogin(
         (token) => {
           setGoogleUser(getStoredGoogleUser() || { email: 'מחובר ל-Google', name: 'משתמש Google' });
           showToast('התחברת בהצלחה לחשבון Google!', 'success');
@@ -244,7 +244,7 @@ export const App: React.FC = () => {
       );
     } catch (err: any) {
       console.error('Login initiation failed', err);
-      showToast(err.message || 'שגיאה בטעינת ספריית Google', 'error');
+      showToast(err.message || 'שגיאה בהתחברות ל-Google', 'error');
     }
   };
 

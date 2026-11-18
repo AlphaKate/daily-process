@@ -24,12 +24,43 @@ export interface GoogleAuthToken {
 declare global {
   interface Window {
     google?: any;
+    __onGoogleGsiLoaded?: () => void;
   }
 }
 
 let tokenClient: any = null;
 let savedOnSuccess: ((token: GoogleAuthToken) => void) | null = null;
 let savedOnError: ((err: any) => void) | null = null;
+
+// Parse access token from URL hash (e.g. if redirected by Google)
+export const checkUrlForAuthToken = (): GoogleAuthToken | null => {
+  if (typeof window === 'undefined') return null;
+  const hash = window.location.hash;
+  if (!hash || !hash.includes('access_token=')) return null;
+
+  try {
+    const params = new URLSearchParams(hash.substring(1));
+    const accessToken = params.get('access_token');
+    const expiresIn = Number(params.get('expires_in')) || 3599;
+
+    if (accessToken) {
+      const token: GoogleAuthToken = {
+        access_token: accessToken,
+        expires_at: Date.now() + expiresIn * 1000
+      };
+      saveStoredToken(token);
+      saveStoredGoogleUser({ email: 'מחובר ל-Google', name: 'משתמש Google' });
+
+      // Clean hash from URL for clean appearance
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      fetchAndSaveUserInfo(token.access_token).catch(() => {});
+      return token;
+    }
+  } catch (e) {
+    console.warn('Error parsing token from URL hash', e);
+  }
+  return null;
+};
 
 export const initGoogleTokenClient = (
   onSuccess: (token: GoogleAuthToken) => void,
@@ -38,83 +69,83 @@ export const initGoogleTokenClient = (
   savedOnSuccess = onSuccess;
   if (onError) savedOnError = onError;
 
+  // First check if token is already in URL hash
+  const urlToken = checkUrlForAuthToken();
+  if (urlToken) {
+    onSuccess(urlToken);
+    return null;
+  }
+
   if (typeof window === 'undefined' || !window.google?.accounts?.oauth2) {
     return null;
   }
 
-  tokenClient = window.google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: GOOGLE_SCOPES,
-    callback: async (response: any) => {
-      if (response.error) {
-        console.error('Google OAuth callback error', response);
-        if (savedOnError) savedOnError(response);
-        return;
-      }
+  try {
+    tokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GOOGLE_SCOPES,
+      callback: (response: any) => {
+        if (response.error) {
+          console.error('Google OAuth callback error', response);
+          if (savedOnError) savedOnError(response);
+          return;
+        }
 
-      if (!response.access_token) {
-        console.warn('No access_token returned by Google popup', response);
-        return;
-      }
+        if (response.access_token) {
+          const token: GoogleAuthToken = {
+            access_token: response.access_token,
+            expires_at: Date.now() + (Number(response.expires_in) || 3599) * 1000
+          };
 
-      const token: GoogleAuthToken = {
-        access_token: response.access_token,
-        expires_at: Date.now() + (Number(response.expires_in) || 3599) * 1000
-      };
+          saveStoredToken(token);
+          saveStoredGoogleUser({ email: 'מחובר ל-Google', name: 'משתמש Google' });
 
-      saveStoredToken(token);
+          if (savedOnSuccess) {
+            savedOnSuccess(token);
+          }
 
-      // Default user info so UI updates instantly
-      const fallbackUser: GoogleUser = {
-        email: 'מחובר ל-Google',
-        name: 'משתמש Google'
-      };
-      saveStoredGoogleUser(fallbackUser);
-
-      // Notify parent immediately
-      if (savedOnSuccess) {
-        savedOnSuccess(token);
-      }
-
-      // Try fetching accurate user info in the background without blocking
-      fetchAndSaveUserInfo(token.access_token).catch(() => {});
-    },
-  });
+          fetchAndSaveUserInfo(token.access_token).catch(() => {});
+        }
+      },
+    });
+  } catch (err) {
+    console.error('Failed to init Google token client', err);
+  }
 
   return tokenClient;
 };
 
-export const ensureTokenClient = async (
-  onSuccess: (token: GoogleAuthToken) => void,
-  onError?: (err: any) => void
-): Promise<any> => {
-  if (tokenClient) return tokenClient;
-
-  let retries = 25;
-  while (retries > 0 && (!window.google || !window.google.accounts?.oauth2)) {
-    await new Promise(res => setTimeout(res, 200));
-    retries--;
-  }
-
-  if (window.google?.accounts?.oauth2) {
-    return initGoogleTokenClient(onSuccess, onError);
-  }
-
-  throw new Error('Google Identity script failed to load. Please check your internet connection or ad-blocker.');
-};
-
-export const requestGoogleLogin = async (
+// SYNCHRONOUS login trigger to prevent popup blocking
+export const triggerGoogleLogin = (
   onSuccess?: (token: GoogleAuthToken) => void,
   onError?: (err: any) => void
-) => {
-  const client = await ensureTokenClient(
-    onSuccess || savedOnSuccess || (() => {}),
-    onError || savedOnError || undefined
-  );
-  if (!client) {
-    throw new Error('Could not initialize Google client');
+): boolean => {
+  if (onSuccess) savedOnSuccess = onSuccess;
+  if (onError) savedOnError = onError;
+
+  // If token client not ready yet, try initializing now synchronously
+  if (!tokenClient && window.google?.accounts?.oauth2) {
+    initGoogleTokenClient(savedOnSuccess || (() => {}), savedOnError || undefined);
   }
-  client.requestAccessToken({ prompt: 'consent' });
+
+  if (tokenClient) {
+    // SYNCHRONOUS - retains user click gesture!
+    tokenClient.requestAccessToken({ prompt: 'consent' });
+    return true;
+  }
+
+  // Fallback: direct OAuth redirect URL (works on any device without popup blocker)
+  const redirectUri = window.location.origin + window.location.pathname;
+  const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(
+    GOOGLE_CLIENT_ID
+  )}&redirect_uri=${encodeURIComponent(
+    redirectUri
+  )}&response_type=token&scope=${encodeURIComponent(
+    GOOGLE_SCOPES
+  )}&prompt=consent`;
+
+  window.location.href = oauthUrl;
+  return true;
 };
 
 export const getStoredToken = (): GoogleAuthToken | null => {
@@ -152,7 +183,6 @@ export const saveStoredGoogleUser = (user: GoogleUser): void => {
 
 const fetchAndSaveUserInfo = async (accessToken: string): Promise<GoogleUser | null> => {
   try {
-    // Attempt to get user info from Google Drive about API or userinfo
     const res = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
