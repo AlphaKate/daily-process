@@ -37,6 +37,7 @@ import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { MorningReviewModal } from './components/MorningReviewModal';
 import { TaskAlertModal } from './components/TaskAlertModal';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal';
+import { VoiceTaskModal } from './components/VoiceTaskModal';
 import {
   NotificationPreferences,
   getNotificationPreferences,
@@ -79,6 +80,9 @@ export const App: React.FC = () => {
   );
   const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] = useState(false);
   const [activeAlertTask, setActiveAlertTask] = useState<Task | null>(null);
+
+  // Voice Task Modal state
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
 
   const lastSyncTimeRef = useRef<number>(0);
 
@@ -443,6 +447,31 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleSaveVoiceTask = (taskData: {
+    title: string;
+    date: string;
+    time?: string;
+    category: 'must_do';
+  }) => {
+    const now = new Date().toISOString();
+    const newTask: Task = {
+      id: `voice-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      title: taskData.title,
+      category: 'must_do',
+      completed: false,
+      date: taskData.date,
+      time: taskData.time,
+      createdAt: now,
+      updatedAt: now
+    };
+    const updated = [newTask, ...tasks];
+    persistTasks(updated);
+    showToast(
+      `משימת Must Do קולית נוספה בהצלחה לתאריך ${taskData.date}${taskData.time ? ` בשעה ${taskData.time}` : ''}! 🎙️`,
+      'success'
+    );
+  };
+
   const handleDeleteRequest = (task: Task) => {
     setTaskToDelete(task);
     setIsDeleteModalOpen(true);
@@ -622,6 +651,7 @@ export const App: React.FC = () => {
         onLogoutGoogle={handleLogoutGoogle}
         onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
         areNotificationsEnabled={notificationPrefs.enabled}
+        onOpenVoiceTask={() => setIsVoiceModalOpen(true)}
       />
 
       {/* Floating Notification Toast */}
@@ -721,6 +751,14 @@ export const App: React.FC = () => {
         preferences={notificationPrefs}
         onClose={() => setIsNotificationSettingsOpen(false)}
         onSavePreferences={(prefs) => setNotificationPrefs(prefs)}
+      />
+
+      {/* Voice Task Modal for Must Do */}
+      <VoiceTaskModal
+        isOpen={isVoiceModalOpen}
+        onClose={() => setIsVoiceModalOpen(false)}
+        onAddTask={handleSaveVoiceTask}
+        currentDate={currentDate}
       />
     </div>
   );

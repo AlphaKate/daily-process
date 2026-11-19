@@ -13,7 +13,8 @@ import {
   LogOut,
   ListTodo,
   Sunrise,
-  Bell
+  Bell,
+  Mic
 } from 'lucide-react';
 import { formatDateDisplayHebrew, getTodayDateString } from '../services/storage';
 import { GoogleUser } from '../services/googleAuth';
@@ -38,6 +39,8 @@ interface HeaderProps {
   // Notifications
   onOpenNotificationSettings?: () => void;
   areNotificationsEnabled?: boolean;
+  // Voice Task
+  onOpenVoiceTask?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -57,6 +60,7 @@ export const Header: React.FC<HeaderProps> = ({
   onLogoutGoogle,
   onOpenNotificationSettings,
   areNotificationsEnabled,
+  onOpenVoiceTask,
 }) => {
   const isToday = currentDate === getTodayDateString();
 
@@ -192,6 +196,19 @@ export const Header: React.FC<HeaderProps> = ({
             >
               {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
             </button>
+
+            {/* Voice Task Button */}
+            {onOpenVoiceTask && (
+              <button
+                type="button"
+                onClick={onOpenVoiceTask}
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/80 rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95 cursor-pointer"
+                title="הקלטת משימה קולית ל-Must Do (דיבור טבעי עם תאריך ושעה)"
+              >
+                <Mic className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 stroke-[2.5]" />
+                <span className="hidden sm:inline">משימה קולית</span>
+              </button>
+            )}
 
             {/* Quick Add Button */}
             <button
