@@ -234,15 +234,43 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           <div className="space-y-2.5">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  תאריך
-                </label>
-                <input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none"
-                />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    תאריך
+                  </label>
+                  {category === 'goals' && (
+                    <button
+                      type="button"
+                      onClick={() => setDate(date === 'backlog' ? defaultDate : 'backlog')}
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-md transition-colors ${
+                        date === 'backlog'
+                          ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300'
+                          : 'text-slate-500 hover:text-emerald-600 hover:underline'
+                      }`}
+                    >
+                      {date === 'backlog' ? '✓ בבנק היעדים' : 'העבר לבנק'}
+                    </button>
+                  )}
+                </div>
+                {date === 'backlog' ? (
+                  <div className="p-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-800 dark:text-amber-300 flex items-center justify-between">
+                    <span>🏦 יעד בבנק (ללא תאריך ספציפי)</span>
+                    <button
+                      type="button"
+                      onClick={() => setDate(defaultDate)}
+                      className="text-[10px] underline font-bold text-emerald-700 dark:text-emerald-400"
+                    >
+                      בחר תאריך
+                    </button>
+                  </div>
+                ) : (
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none"
+                  />
+                )}
               </div>
 
               <div>

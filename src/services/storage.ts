@@ -12,6 +12,9 @@ export const getTodayDateString = (): string => {
 };
 
 export const formatDateDisplayHebrew = (dateStr: string): string => {
+  if (!dateStr || dateStr === 'backlog') {
+    return 'בנק יעדים (ללא תאריך)';
+  }
   try {
     const [year, month, day] = dateStr.split('-').map(Number);
     const date = new Date(year, month - 1, day);
@@ -73,10 +76,12 @@ export const saveStoredTasks = (tasks: Task[]): void => {
   localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks));
 };
 
-// Check for overdue unfinished tasks from previous days
+// Check for overdue unfinished tasks from previous days (ignoring backlog tasks without dates)
 export const checkUnfinishedPreviousTasks = (currentDate: string): Task[] => {
   const allTasks = getStoredTasks();
-  return allTasks.filter(t => !t.isDeleted && !t.completed && t.date < currentDate);
+  return allTasks.filter(
+    t => !t.isDeleted && !t.completed && t.date && t.date !== 'backlog' && t.date < currentDate
+  );
 };
 
 // Rollover tasks to current date

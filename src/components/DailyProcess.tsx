@@ -34,7 +34,8 @@ import {
   RefreshCw,
   ArrowDownToLine,
   ShoppingBag,
-  Sunrise
+  Sunrise,
+  Inbox
 } from 'lucide-react';
 
 interface DailyProcessProps {
@@ -75,6 +76,9 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
   const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
   const [casualViewMode, setCasualViewMode] = useState<'today' | 'super'>('today');
   const [allTasksExpanded, setAllTasksExpanded] = useState<boolean | undefined>(undefined);
+  const [weekDraggedTaskId, setWeekDraggedTaskId] = useState<string | null>(null);
+  const [weekDragOverDate, setWeekDragOverDate] = useState<string | null>(null);
+  const [showWeekBacklog, setShowWeekBacklog] = useState(false);
   const [superItems, setSuperItems] = useState<SuperListItem[]>(() => getSuperListItems());
   const [newSuperText, setNewSuperText] = useState('');
   const [isSuperSyncing, setIsSuperSyncing] = useState(false);
@@ -94,6 +98,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
 
   // All goals across all dates (for week and month views)
   const allGoals = masterTasks.filter(t => !t.isDeleted && t.category === 'goals');
+  const backlogGoals = allGoals.filter(t => !t.date || t.date === 'backlog');
 
   // Compute week days for the current week containing currentDate
   const [y, m, d] = currentDate.split('-').map(Number);
@@ -487,17 +492,115 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
           <div className="space-y-3 p-3.5 bg-slate-50/70 dark:bg-slate-850/50 rounded-2xl border border-slate-200/80 dark:border-slate-800">
             {/* Week Progress Bar & Constraints */}
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-              <span className="font-semibold text-slate-800 dark:text-slate-200">
-                יעדים שתוכננו לשבוע זה: {weekGoals.length} (הושלמו {weekCompletedGoals.length})
-              </span>
-              {weekTotalMinutes > 0 && (
-                <span className="text-amber-700 dark:text-amber-300 font-semibold bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800">
-                  ⏱️ {weekCompletedMinutes} / {weekTotalMinutes} דק׳ הושקעו
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  יעדים שתוכננו לשבוע זה: {weekGoals.length} (הושלמו {weekCompletedGoals.length})
                 </span>
-              )}
+                {weekTotalMinutes > 0 && (
+                  <span className="text-amber-700 dark:text-amber-300 font-semibold bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800">
+                    ⏱️ {weekCompletedMinutes} / {weekTotalMinutes} דק׳ הושקעו
+                  </span>
+                )}
+              </div>
+
+              {/* Toggle Backlog Drawer in Week */}
+              <button
+                type="button"
+                onClick={() => setShowWeekBacklog(prev => !prev)}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-xl border flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  showWeekBacklog
+                    ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700'
+                    : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-400'
+                }`}
+              >
+                <Inbox className="w-3.5 h-3.5 text-amber-500" />
+                <span>בנק יעדים ({backlogGoals.length})</span>
+                {showWeekBacklog ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
             </div>
 
-            {/* Horizontal 7-Day Timeline Strip */}
+            {/* Backlog Drawer for Week View */}
+            {showWeekBacklog && (
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  setWeekDragOverDate('backlog');
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    if (weekDragOverDate === 'backlog') setWeekDragOverDate(null);
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const id = e.dataTransfer.getData('text/plain') || weekDraggedTaskId;
+                  if (id) {
+                    const task = allGoals.find(t => t.id === id);
+                    if (task && task.date !== 'backlog') {
+                      handleReschedule(task, 'backlog');
+                    }
+                  }
+                  setWeekDragOverDate(null);
+                  setWeekDraggedTaskId(null);
+                }}
+                className={`p-2.5 rounded-xl border transition-all ${
+                  weekDragOverDate === 'backlog'
+                    ? 'bg-amber-100 dark:bg-amber-950/70 border-amber-500 ring-2 ring-amber-400'
+                    : 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200/70 dark:border-amber-900/40'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs mb-2">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-200">
+                    <Inbox className="w-3.5 h-3.5 text-amber-600" />
+                    <span>בנק יעדים ({backlogGoals.length} ממתינים)</span>
+                  </div>
+                  <span className="text-[10px] text-amber-700/80 dark:text-amber-300/80">
+                    גרור/י יעד ליום מסוים, או גרור/י לכאן להחזרה לבנק
+                  </span>
+                </div>
+                {backlogGoals.length === 0 ? (
+                  <div className="text-center py-2 text-xs text-amber-700/70 dark:text-amber-400 italic">
+                    בנק היעדים ריק. כל היעדים שובצו!
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+                    {backlogGoals.map(bg => (
+                      <div
+                        key={bg.id}
+                        draggable={!bg.completed}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('text/plain', bg.id);
+                          e.dataTransfer.effectAllowed = 'move';
+                          setWeekDraggedTaskId(bg.id);
+                        }}
+                        onDragEnd={() => {
+                          setWeekDraggedTaskId(null);
+                          setWeekDragOverDate(null);
+                        }}
+                        className={`p-1.5 px-2 rounded-lg border text-xs min-w-[170px] max-w-[210px] shrink-0 bg-white dark:bg-slate-850 border-amber-200 dark:border-amber-800 flex items-center justify-between gap-1.5 cursor-grab active:cursor-grabbing ${
+                          weekDraggedTaskId === bg.id ? 'opacity-40 scale-95 ring-2 ring-amber-400' : ''
+                        }`}
+                      >
+                        <span className="truncate font-medium flex-1 text-slate-800 dark:text-slate-100" title={bg.title}>
+                          {bg.title}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleReschedule(bg, currentDate)}
+                          className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold shrink-0 hover:bg-emerald-200 cursor-pointer"
+                          title="שבץ להיום"
+                        >
+                          להיום
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Horizontal 7-Day Timeline Strip (Drag Targets) */}
             <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2 pt-1">
               {currentWeekDates.map((day) => {
                 let dayGoals = allGoals.filter(g => g.date === day.dateStr);
@@ -505,13 +608,39 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                   dayGoals = dayGoals.filter(g => g.milestoneTitle?.trim() === milestoneFilter);
                 }
 
+                const isTarget = weekDragOverDate === day.dateStr;
+
                 return (
                   <div
                     key={day.dateStr}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      if (weekDragOverDate !== day.dateStr) setWeekDragOverDate(day.dateStr);
+                    }}
+                    onDragLeave={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                        if (weekDragOverDate === day.dateStr) setWeekDragOverDate(null);
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const id = e.dataTransfer.getData('text/plain') || weekDraggedTaskId;
+                      if (id) {
+                        const task = allGoals.find(t => t.id === id);
+                        if (task && task.date !== day.dateStr) {
+                          handleReschedule(task, day.dateStr);
+                        }
+                      }
+                      setWeekDragOverDate(null);
+                      setWeekDraggedTaskId(null);
+                    }}
                     className={`p-2.5 rounded-xl border flex flex-col justify-between min-h-[110px] transition-all ${
-                      day.isToday
+                      isTarget
+                        ? 'border-emerald-500 ring-2 ring-emerald-500/50 bg-emerald-50/80 dark:bg-emerald-950/50 shadow-md scale-[1.01]'
+                        : day.isToday
                         ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-400 dark:border-emerald-600 shadow-2xs ring-1 ring-emerald-500/20'
-                        : 'bg-white dark:bg-slate-800 border-slate-200/70 dark:border-slate-700/70'
+                        : 'bg-white dark:bg-slate-850 border-slate-200/70 dark:border-slate-700/70'
                     }`}
                   >
                     <div>
@@ -526,16 +655,29 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                         {dayGoals.map((g) => (
                           <div
                             key={g.id}
-                            className={`p-1.5 rounded-lg border text-[11px] leading-tight transition-colors ${
-                              g.completed
+                            draggable={!g.completed}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData('text/plain', g.id);
+                              e.dataTransfer.effectAllowed = 'move';
+                              setWeekDraggedTaskId(g.id);
+                            }}
+                            onDragEnd={() => {
+                              setWeekDraggedTaskId(null);
+                              setWeekDragOverDate(null);
+                            }}
+                            className={`p-1.5 rounded-lg border text-[11px] leading-tight transition-colors cursor-grab active:cursor-grabbing ${
+                              weekDraggedTaskId === g.id
+                                ? 'opacity-40 scale-95 ring-2 ring-emerald-500 bg-emerald-100'
+                                : g.completed
                                 ? 'bg-slate-50 dark:bg-slate-850/60 text-slate-400 line-through border-slate-200 dark:border-slate-700'
-                                : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:border-emerald-300'
+                                : 'bg-white dark:bg-slate-850 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:border-emerald-300'
                             }`}
                           >
                             <div className="flex items-start gap-1">
                               <button
+                                type="button"
                                 onClick={() => onToggleComplete(g)}
-                                className={`w-3.5 h-3.5 rounded mt-0.5 flex items-center justify-center border shrink-0 ${
+                                className={`w-3.5 h-3.5 rounded mt-0.5 flex items-center justify-center border shrink-0 cursor-pointer ${
                                   g.completed
                                     ? 'bg-emerald-500 border-emerald-500 text-white'
                                     : 'border-slate-300 dark:border-slate-600'
@@ -552,23 +694,37 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                               </span>
                             </div>
 
-                            {/* Move to today action */}
-                            {!day.isToday && (
+                            {/* Reschedule actions */}
+                            <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-100 dark:border-slate-800 text-[9px]">
+                              {!day.isToday ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleReschedule(g, currentDate)}
+                                  className="font-semibold text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                                  title="העבר לתאריך של היום"
+                                >
+                                  <ArrowRightLeft className="w-2 h-2" />
+                                  <span>להיום</span>
+                                </button>
+                              ) : <span />}
+
                               <button
-                                onClick={() => handleReschedule(g, currentDate)}
-                                className="mt-1 text-[9px] font-semibold text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-0.5"
-                                title="העבר לתאריך של היום"
+                                type="button"
+                                onClick={() => handleReschedule(g, 'backlog')}
+                                className="text-amber-700 dark:text-amber-400 hover:underline cursor-pointer"
+                                title="החזר לבנק היעדים"
                               >
-                                <ArrowRightLeft className="w-2 h-2" />
-                                <span>להיום</span>
+                                <span>לבנק 🏦</span>
                               </button>
-                            )}
+                            </div>
                           </div>
                         ))}
 
                         {dayGoals.length === 0 && (
-                          <div className="text-[10px] text-slate-400 text-center py-2 italic">
-                            אין יעדים
+                          <div className={`text-[10px] text-center py-2 italic rounded-lg border border-dashed ${
+                            isTarget ? 'border-emerald-400 text-emerald-600 bg-emerald-50' : 'text-slate-400 border-transparent'
+                          }`}>
+                            {isTarget ? 'שחרר כאן ⬇' : 'אין יעדים'}
                           </div>
                         )}
                       </div>
