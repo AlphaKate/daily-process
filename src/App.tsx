@@ -34,6 +34,16 @@ import { StatsView } from './components/StatsView';
 import { TaskModal } from './components/TaskModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { MorningReviewModal } from './components/MorningReviewModal';
+import { TaskAlertModal } from './components/TaskAlertModal';
+import { NotificationSettingsModal } from './components/NotificationSettingsModal';
+import {
+  NotificationPreferences,
+  getNotificationPreferences,
+  isTaskAlreadyAlerted,
+  markTaskAsAlerted,
+  playNotificationChime,
+  sendSystemNotification
+} from './services/notificationService';
 import { CheckCircle2, AlertCircle, X } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -61,6 +71,13 @@ export const App: React.FC = () => {
   // Morning Review / Rollover state
   const [overdueTasks, setOverdueTasks] = useState<Task[]>([]);
   const [isMorningReviewOpen, setIsMorningReviewOpen] = useState(false);
+
+  // Notification and Task Alerts state
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>(() =>
+    getNotificationPreferences()
+  );
+  const [isNotificationSettingsOpen, setIsNotificationSettingsOpen] = useState(false);
+  const [activeAlertTask, setActiveAlertTask] = useState<Task | null>(null);
 
   const lastSyncTimeRef = useRef<number>(0);
 
@@ -452,6 +469,77 @@ export const App: React.FC = () => {
     showToast(`היעד תוזמן לתאריך ${newDate}`, 'success');
   };
 
+  const handleSnoozeTask = (task: Task, minutes: number) => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + minutes);
+    const newTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const updated = tasks.map(t =>
+      t.id === task.id ? { ...t, time: newTime, updatedAt: new Date().toISOString() } : t
+    );
+    persistTasks(updated);
+    showToast(`המשימה נדחתה ב-${minutes} דקות (לשעה ${newTime})`, 'success');
+    setActiveAlertTask(null);
+  };
+
+  // Periodic Task Alert Checker (runs every 15s)
+  useEffect(() => {
+    if (!notificationPrefs.enabled) return;
+
+    const checkAlerts = () => {
+      const today = getTodayDateString();
+      const now = new Date();
+      const currentHours = now.getHours();
+      const currentMinutes = now.getMinutes();
+      const currentMinutesSinceMidnight = currentHours * 60 + currentMinutes;
+
+      // Active tasks for today that have a time and are not completed
+      const eligibleTasks = tasks.filter(
+        t => !t.isDeleted && !t.completed && t.date === today && t.time
+      );
+
+      for (const task of eligibleTasks) {
+        if (!task.time) continue;
+        const [tH, tM] = task.time.split(':').map(Number);
+        if (isNaN(tH) || isNaN(tM)) continue;
+
+        const taskMinutesSinceMidnight = tH * 60 + tM;
+        const targetMinutes = taskMinutesSinceMidnight - (notificationPrefs.leadTimeMinutes || 0);
+
+        // Check if current time has reached target time (within a 2-minute trigger window)
+        if (
+          currentMinutesSinceMidnight >= targetMinutes &&
+          currentMinutesSinceMidnight <= targetMinutes + 2
+        ) {
+          if (!isTaskAlreadyAlerted(task.id, today, task.time)) {
+            markTaskAsAlerted(task.id, today, task.time);
+
+            // Play sound chime if sound enabled
+            if (notificationPrefs.soundEnabled) {
+              playNotificationChime();
+            }
+
+            // Show native system notification
+            sendSystemNotification(
+              `⏰ תזכורת: ${task.title}`,
+              task.description || `השעה ${task.time} - הגיע זמן המשימה!`,
+              () => {
+                setActiveAlertTask(task);
+              }
+            );
+
+            // Open in-app visual alert
+            setActiveAlertTask(task);
+            break; // Alert one task at a time
+          }
+        }
+      }
+    };
+
+    checkAlerts();
+    const interval = setInterval(checkAlerts, 15000);
+    return () => clearInterval(interval);
+  }, [tasks, notificationPrefs]);
+
   const handleTasksSynced = (newTasks: Task[], updatedTasks: Task[]) => {
     const map = new Map(tasks.map(t => [t.id, t]));
     updatedTasks.forEach(t => map.set(t.id, t));
@@ -531,6 +619,8 @@ export const App: React.FC = () => {
         onConnectGoogle={handleConnectGoogle}
         onSyncGoogle={() => syncGoogleServices()}
         onLogoutGoogle={handleLogoutGoogle}
+        onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
+        areNotificationsEnabled={notificationPrefs.enabled}
       />
 
       {/* Floating Notification Toast */}
@@ -613,6 +703,23 @@ export const App: React.FC = () => {
         todayDate={getTodayDateString()}
         onConfirmRollover={handleConfirmRollover}
         onClose={() => setIsMorningReviewOpen(false)}
+      />
+
+      {/* Real-time Task Time Alert Modal */}
+      <TaskAlertModal
+        task={activeAlertTask}
+        isOpen={Boolean(activeAlertTask)}
+        onClose={() => setActiveAlertTask(null)}
+        onToggleComplete={handleToggleComplete}
+        onSnooze={handleSnoozeTask}
+      />
+
+      {/* Notification Preferences Settings Modal */}
+      <NotificationSettingsModal
+        isOpen={isNotificationSettingsOpen}
+        preferences={notificationPrefs}
+        onClose={() => setIsNotificationSettingsOpen(false)}
+        onSavePreferences={(prefs) => setNotificationPrefs(prefs)}
       />
     </div>
   );

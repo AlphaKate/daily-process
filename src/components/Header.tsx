@@ -12,7 +12,8 @@ import {
   LogIn,
   LogOut,
   ListTodo,
-  Sunrise
+  Sunrise,
+  Bell
 } from 'lucide-react';
 import { formatDateDisplayHebrew, getTodayDateString } from '../services/storage';
 import { GoogleUser } from '../services/googleAuth';
@@ -34,6 +35,9 @@ interface HeaderProps {
   onConnectGoogle: () => void;
   onSyncGoogle: () => void;
   onLogoutGoogle: () => void;
+  // Notifications
+  onOpenNotificationSettings?: () => void;
+  areNotificationsEnabled?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -51,6 +55,8 @@ export const Header: React.FC<HeaderProps> = ({
   onConnectGoogle,
   onSyncGoogle,
   onLogoutGoogle,
+  onOpenNotificationSettings,
+  areNotificationsEnabled,
 }) => {
   const isToday = currentDate === getTodayDateString();
 
@@ -161,6 +167,21 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="hidden sm:inline">סטטיסטיקה</span>
               </button>
             </div>
+
+            {/* Notification Alerts Settings */}
+            {onOpenNotificationSettings && (
+              <button
+                type="button"
+                onClick={onOpenNotificationSettings}
+                className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors relative cursor-pointer"
+                title="הגדרות התרעות משימות וצליל"
+              >
+                <Bell className={`w-4 h-4 ${areNotificationsEnabled ? 'text-amber-500 dark:text-amber-400' : 'text-slate-400'}`} />
+                {areNotificationsEnabled && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 absolute top-1 right-1" />
+                )}
+              </button>
+            )}
 
             {/* Dark / Light Toggle */}
             <button
