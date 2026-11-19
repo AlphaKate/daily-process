@@ -1,5 +1,19 @@
 import React from 'react';
-import { Sun, Moon, BarChart3, CheckSquare, Calendar, ChevronRight, ChevronLeft, Plus, RefreshCw, LogIn, LogOut, ListTodo } from 'lucide-react';
+import {
+  Sun,
+  Moon,
+  BarChart3,
+  CheckSquare,
+  Calendar,
+  ChevronRight,
+  ChevronLeft,
+  Plus,
+  RefreshCw,
+  LogIn,
+  LogOut,
+  ListTodo,
+  Sunrise
+} from 'lucide-react';
 import { formatDateDisplayHebrew, getTodayDateString } from '../services/storage';
 import { GoogleUser } from '../services/googleAuth';
 
@@ -11,6 +25,9 @@ interface HeaderProps {
   isDark: boolean;
   onToggleTheme: () => void;
   onOpenAddTask: () => void;
+  // Morning Review
+  overdueTasksCount?: number;
+  onOpenMorningReview?: () => void;
   // Google Auth & Sync
   googleUser: GoogleUser | null;
   isSyncing: boolean;
@@ -27,6 +44,8 @@ export const Header: React.FC<HeaderProps> = ({
   isDark,
   onToggleTheme,
   onOpenAddTask,
+  overdueTasksCount,
+  onOpenMorningReview,
   googleUser,
   isSyncing,
   onConnectGoogle,
@@ -166,12 +185,27 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Date Selector Navigation Bar */}
         {activeView === 'process' && (
-          <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
-              <Calendar className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span className="text-xs sm:text-sm font-bold">
-                {formatDateDisplayHebrew(currentDate)}
-              </span>
+          <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                <Calendar className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-xs sm:text-sm font-bold">
+                  {formatDateDisplayHebrew(currentDate)}
+                </span>
+              </div>
+
+              {/* Morning Review Quick Access Button */}
+              {overdueTasksCount !== undefined && overdueTasksCount > 0 && isToday && (
+                <button
+                  type="button"
+                  onClick={onOpenMorningReview}
+                  className="flex items-center gap-1 px-2 py-0.5 text-xs font-bold text-amber-800 dark:text-amber-200 bg-amber-100/90 dark:bg-amber-950/80 hover:bg-amber-200/90 dark:hover:bg-amber-900 border border-amber-300 dark:border-amber-700/80 rounded-lg transition-all shadow-2xs animate-pulse"
+                  title="נמצאו משימות שלא הושלמו מיום קודם - פתח סקירת בוקר"
+                >
+                  <Sunrise className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 stroke-[2.5]" />
+                  <span>סקירת בוקר ({overdueTasksCount})</span>
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-1">

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Task, TaskCategory } from '../types';
 import { TaskItem } from './TaskItem';
 import { GoalsTimelineModal } from './GoalsTimelineModal';
-import { getStoredTasks, saveStoredTasks } from '../services/storage';
+import { getStoredTasks, saveStoredTasks, getTodayDateString } from '../services/storage';
 import {
   SuperListItem,
   getSuperListItems,
@@ -33,7 +33,8 @@ import {
   Trash2,
   RefreshCw,
   ArrowDownToLine,
-  ShoppingBag
+  ShoppingBag,
+  Sunrise
 } from 'lucide-react';
 
 interface DailyProcessProps {
@@ -46,6 +47,8 @@ interface DailyProcessProps {
   onQuickAddTask: (category: TaskCategory) => void;
   onRescheduleTask?: (task: Task, newDate: string) => void;
   onTasksSynced?: (newTasks: Task[], updatedTasks: Task[]) => void;
+  overdueTasksCount?: number;
+  onOpenMorningReview?: () => void;
 }
 
 const HEBREW_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
@@ -64,6 +67,8 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
   onQuickAddTask,
   onRescheduleTask,
   onTasksSynced: _onTasksSynced,
+  overdueTasksCount,
+  onOpenMorningReview,
 }) => {
   const [showDoneSection, setShowDoneSection] = useState(true);
   const [goalsViewMode, setGoalsViewMode] = useState<'day' | 'week' | 'month'>('day');
@@ -212,6 +217,33 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
 
   return (
     <div className="space-y-6 pb-24">
+      {/* Morning Rollover Notification Banner */}
+      {overdueTasksCount !== undefined && overdueTasksCount > 0 && currentDate === getTodayDateString() && (
+        <div className="p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/5 dark:from-amber-950/40 dark:via-orange-950/30 dark:to-slate-900 border border-amber-300 dark:border-amber-800 flex items-center justify-between gap-3 shadow-2xs animate-in fade-in">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <Sunrise className="w-4 h-4 stroke-[2.5]" />
+            </div>
+            <div>
+              <div className="text-xs sm:text-sm font-bold text-amber-900 dark:text-amber-200">
+                נמצאו {overdueTasksCount} משימות מיום קודם שטרם הושלמו
+              </div>
+              <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                העבירי אותן לתכנון של היום או סמני מה שכבר בוצע
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenMorningReview}
+            className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs shrink-0 shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <Sunrise className="w-3.5 h-3.5" />
+            <span>סקור משימות</span>
+          </button>
+        </div>
+      )}
+
       {/* 1. MUST DO SECTION */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">

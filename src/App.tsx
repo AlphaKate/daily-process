@@ -500,8 +500,15 @@ export const App: React.FC = () => {
       );
     }
 
+    const remainingOverdue = updated.filter(t => !t.isDeleted && !t.completed && t.date < today);
+    setOverdueTasks(remainingOverdue);
     persistTasks(updated);
     setCurrentDate(today);
+
+    const parts = [];
+    if (selectedTaskIds.length > 0) parts.push(`${selectedTaskIds.length} משימות הועברו להיום`);
+    if (completedTaskIds.length > 0) parts.push(`${completedTaskIds.length} סומנו כבוצעו`);
+    showToast(`סקירת בוקר הושלמה בהצלחה! ${parts.join(', ')}`, 'success');
   };
 
   const filteredTasksForDate = tasks.filter(t => !t.isDeleted && t.date === currentDate);
@@ -517,6 +524,8 @@ export const App: React.FC = () => {
         isDark={isDark}
         onToggleTheme={handleToggleTheme}
         onOpenAddTask={() => handleOpenAddTask('must_do')}
+        overdueTasksCount={overdueTasks.length}
+        onOpenMorningReview={() => setIsMorningReviewOpen(true)}
         googleUser={googleUser}
         isSyncing={isSyncing}
         onConnectGoogle={handleConnectGoogle}
@@ -565,6 +574,8 @@ export const App: React.FC = () => {
             onQuickAddTask={handleOpenAddTask}
             onRescheduleTask={handleRescheduleTask}
             onTasksSynced={handleTasksSynced}
+            overdueTasksCount={overdueTasks.length}
+            onOpenMorningReview={() => setIsMorningReviewOpen(true)}
           />
         ) : (
           <StatsView
