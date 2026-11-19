@@ -168,3 +168,72 @@ export const parseRawStagesText = (rawText: string): NotebookStage[] => {
     };
   });
 };
+
+// Decompose plan into sub-tasks based on the link, title, and optional pasted notes
+export const decomposeNotebookPlan = (
+  url: string,
+  planTitle: string,
+  rawContent?: string
+): NotebookStage[] => {
+  // If raw content was pasted, parse it directly
+  if (rawContent && rawContent.trim()) {
+    const parsed = parseRawStagesText(rawContent.trim());
+    if (parsed.length > 0) return parsed;
+  }
+
+  // If this is the Daily Assertive Practice Plan (or matching link)
+  if (
+    url.includes('0Uhj6QVmB40d') ||
+    planTitle.toLowerCase().includes('assertive') ||
+    planTitle.includes('אסרטיב')
+  ) {
+    return INITIAL_ASSERTIVE_NOTEBOOK.stages;
+  }
+
+  // Dynamic pedagogical breakdown for any GoogleLM topic
+  const baseTitle = planTitle.trim() || 'תוכנית למידה';
+  return [
+    {
+      id: `stg-1-${Date.now()}`,
+      title: `שלב 1: מבוא ועקרונות יסוד ב-${baseTitle}`,
+      description: `קריאת חומרי הפתיחה ומיפוי מטרות מתוך הקובץ במחברת NotebookLM.`,
+      durationMinutes: 20
+    },
+    {
+      id: `stg-2-${Date.now() + 1}`,
+      title: `שלב 2: סקירת מושגי מפתח ותרגול ראשוני`,
+      description: `העמקה בפרקים הראשונים של התוכנית ותרגול מודרך.`,
+      durationMinutes: 20
+    },
+    {
+      id: `stg-3-${Date.now() + 2}`,
+      title: `שלב 3: יישום מעשי ופתרון דוגמאות מתוך המחברת`,
+      description: `שאילת שאלות ב-NotebookLM וקבלת הסברים מעמיקים על מקרי בוחן.`,
+      durationMinutes: 25
+    },
+    {
+      id: `stg-4-${Date.now() + 3}`,
+      title: `שלב 4: תרגול מתקדם והתמודדות עם שאלות מורכבות`,
+      description: `מעבר על החלק המתקדם בתוכנית העבודה ותרגול עצמאי.`,
+      durationMinutes: 25
+    },
+    {
+      id: `stg-5-${Date.now() + 4}`,
+      title: `שלב 5: יישום בעולם האמיתי ובסביבת העבודה`,
+      description: `חיבור החומר הנלמד למשימות יומיומיות ותרגול מעשי.`,
+      durationMinutes: 30
+    },
+    {
+      id: `stg-6-${Date.now() + 5}`,
+      title: `שלב 6: חזרה, חידוד דגשים ומשוב ב-NotebookLM`,
+      description: `שיחה עם המודל במחברת לצורך בדיקת הבנה וקבלת משוב על התרגול.`,
+      durationMinutes: 25
+    },
+    {
+      id: `stg-7-${Date.now() + 6}`,
+      title: `שלב 7: סקירת התקדמות, כתיבת תובנות והטמעה`,
+      description: `סיכום שבועי של התוכנית וכתיבת נקודות מפתח להמשך.`,
+      durationMinutes: 30
+    }
+  ];
+};

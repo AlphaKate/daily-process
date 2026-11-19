@@ -11,7 +11,7 @@ import {
   ArrowDownToLine,
   BookOpen,
   Layers,
-  Sparkles
+  Wand2
 } from 'lucide-react';
 import {
   LearningNotebook,
@@ -20,7 +20,7 @@ import {
   addLearningNotebook,
   updateLearningNotebook,
   deleteLearningNotebook,
-  parseRawStagesText
+  decomposeNotebookPlan
 } from '../services/notebookStorage';
 
 interface NotebookManagerModalProps {
@@ -45,13 +45,16 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
     return list.length > 0 ? list[0].id : '';
   });
 
-  // Add Notebook Form State
+  // Add Notebook Form Wizard State
   const [newTitle, setNewTitle] = useState('');
   const [newUrl, setNewUrl] = useState('');
   const [newMilestone, setNewMilestone] = useState('');
+  const [planFileName, setPlanFileName] = useState('');
   const [newDescription, setNewDescription] = useState('');
-  const [rawStagesInput, setRawStagesInput] = useState('');
-  const [newManualStages, setNewManualStages] = useState<NotebookStage[]>([]);
+  const [rawPastedContent, setRawPastedContent] = useState('');
+  const [decomposedStages, setDecomposedStages] = useState<NotebookStage[]>([]);
+  const [hasDecomposed, setHasDecomposed] = useState(false);
+  const [scheduleToWeekImmediately, setScheduleToWeekImmediately] = useState(true);
 
   // Edit Stage State
   const [editingStageId, setEditingStageId] = useState<string | null>(null);
@@ -67,27 +70,23 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
 
   const selectedNotebook = notebooks.find(n => n.id === selectedNotebookId) || notebooks[0];
 
-  // Refresh local list from storage
   const refreshNotebooks = () => {
     const fresh = getStoredNotebooks();
     setNotebooks(fresh);
   };
 
-  // Check if a stage is already scheduled for today
   const isStageScheduledForDate = (stageTitle: string, date: string): boolean => {
     return allTasks.some(
       t => !t.isDeleted && t.date === date && t.title.trim().toLowerCase() === stageTitle.trim().toLowerCase()
     );
   };
 
-  // Check if a stage has been completed anywhere
   const isStageCompleted = (stageTitle: string): boolean => {
     return allTasks.some(
       t => !t.isDeleted && t.completed && t.title.trim().toLowerCase() === stageTitle.trim().toLowerCase()
     );
   };
 
-  // Quick schedule a stage onto a date
   const handleScheduleStage = (notebook: LearningNotebook, stage: NotebookStage, targetDate: string) => {
     const now = new Date().toISOString();
     const newTask: Task = {
@@ -107,35 +106,81 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
     onScheduleStage(newTask);
   };
 
-  // Add New Notebook submit
+  // 1. Open NotebookLM to pick a notebook
+  const handleOpenNotebookLMForNotebook = () => {
+    window.open('https://notebooklm.google.com/', '_blank');
+  };
+
+  // 2. Open NotebookLM to pick a plan file/note
+  const handleOpenNotebookLMForPlan = () => {
+    const target = newUrl.trim() || 'https://notebooklm.google.com/';
+    window.open(target, '_blank');
+  };
+
+  // 3. Decompose plan into sub-tasks based on the link and plan file
+  const handleDecomposePlan = () => {
+    const effectiveUrl = newUrl.trim() || 'https://notebooklm.link.google/0Uhj6QVmB40d';
+    const effectivePlanTitle = planFileName.trim() || newTitle.trim() || 'Daily assertive practice plan';
+
+    const stages = decomposeNotebookPlan(effectiveUrl, effectivePlanTitle, rawPastedContent);
+    setDecomposedStages(stages);
+    setHasDecomposed(true);
+
+    if (!newTitle.trim()) {
+      setNewTitle(effectivePlanTitle);
+    }
+    if (!newMilestone.trim()) {
+      setNewMilestone(`${effectivePlanTitle} (GoogleLM)`);
+    }
+  };
+
+  // Submit and create notebook + optional scheduling
   const handleCreateNotebook = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
 
-    let finalStages = newManualStages;
-    if (rawStagesInput.trim()) {
-      const parsed = parseRawStagesText(rawStagesInput.trim());
-      finalStages = [...finalStages, ...parsed];
-    }
-
+    let finalStages = decomposedStages;
     if (finalStages.length === 0) {
-      finalStages = [
-        {
-          id: `stg-1-${Date.now()}`,
-          title: 'שלב 1: היכרות עם נושא הלמידה וסקירת חומרים',
-          description: `מתוך מחברת ${newTitle.trim()}`,
-          durationMinutes: 20
-        }
-      ];
+      finalStages = decomposeNotebookPlan(newUrl, newTitle, rawPastedContent);
     }
 
     const created = addLearningNotebook({
       title: newTitle.trim(),
       url: newUrl.trim() || 'https://notebooklm.google.com/',
       milestoneTitle: newMilestone.trim() || `${newTitle.trim()} (GoogleLM)`,
-      description: newDescription.trim() || undefined,
+      description: newDescription.trim() || (planFileName ? `מתוך תוכנית העבודה: ${planFileName}` : undefined),
       stages: finalStages
     });
+
+    // If requested, immediately distribute the stages across the week (one per day)
+    if (scheduleToWeekImmediately && finalStages.length > 0) {
+      const [startYear, startMonth, startDay] = currentDate.split('-').map(Number);
+      const now = new Date().toISOString();
+
+      finalStages.forEach((stg, idx) => {
+        const d = new Date(startYear, startMonth - 1, startDay);
+        d.setDate(d.getDate() + idx);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const dayNum = String(d.getDate()).padStart(2, '0');
+
+        const task: Task = {
+          id: `nb-auto-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 4)}`,
+          title: stg.title,
+          description: stg.description,
+          category: 'goals',
+          completed: false,
+          date: `${y}-${m}-${dayNum}`,
+          durationMinutes: stg.durationMinutes || 20,
+          milestoneTitle: created.milestoneTitle,
+          link: created.url,
+          createdAt: now,
+          updatedAt: now
+        };
+
+        onScheduleStage(task);
+      });
+    }
 
     refreshNotebooks();
     setSelectedNotebookId(created.id);
@@ -145,9 +190,11 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
     setNewTitle('');
     setNewUrl('');
     setNewMilestone('');
+    setPlanFileName('');
     setNewDescription('');
-    setRawStagesInput('');
-    setNewManualStages([]);
+    setRawPastedContent('');
+    setDecomposedStages([]);
+    setHasDecomposed(false);
   };
 
   // Add stage to existing notebook
@@ -208,7 +255,7 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-5 bg-slate-900/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-900/70 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col h-[92vh]">
+      <div className="bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-900/70 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col h-[94vh]">
         {/* Header */}
         <div className="px-5 py-3.5 bg-gradient-to-r from-purple-700 via-indigo-700 to-purple-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -225,7 +272,7 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-purple-200 hidden sm:block">
-                צפייה, עריכה ושילוב שלבי למידה ממספר מחברות ונושאים בכל יום
+                פתיחת מחברות ב-NotebookLM, פירוק תוכניות עבודה לתתי-משימות ושילוב נושאים בכל יום
               </p>
             </div>
           </div>
@@ -276,7 +323,7 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
               }`}
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>מחברת חדשה +</span>
+              <span>הוספת מחברת ופירוק שלבים 🪄</span>
             </button>
           </div>
 
@@ -311,7 +358,7 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                     כל מחברות הלמידה שלך ב-GoogleLM
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    באפשרותך לבחור מחברת, לצפות בשלביה, ולשבץ שלבים מכל אחת מהן ישירות להיום
+                    באפשרותך לפתוח כל מחברת ב-NotebookLM, לצפות בשלביה, ולשבץ שלבים מכל אחת מהן ישירות להיום
                   </p>
                 </div>
                 <button
@@ -418,8 +465,7 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                           rel="noopener noreferrer"
                           className="text-xs text-slate-500 hover:text-purple-600 font-semibold flex items-center gap-1"
                         >
-                          <span>ב-NotebookLM</span>
-                          <ExternalLink className="w-3 h-3" />
+                          <span>ב-NotebookLM ↗</span>
                         </a>
                       </div>
                     </div>
@@ -455,15 +501,17 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                   </div>
                 </div>
 
-                <a
-                  href={selectedNotebook.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 font-bold text-xs flex items-center gap-1.5 shadow-2xs hover:bg-purple-50 transition-colors"
-                >
-                  <span>פתח מחברת ב-NotebookLM 🧠</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={selectedNotebook.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 font-bold text-xs flex items-center gap-1.5 shadow-2xs hover:bg-purple-50 transition-colors"
+                  >
+                    <span>פתח מחברת ב-NotebookLM ↗</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                </div>
               </div>
 
               {/* Stages List */}
@@ -564,7 +612,6 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
 
                           {/* Scheduling & Edit Buttons */}
                           <div className="flex items-center gap-1.5 shrink-0">
-                            {/* Schedule To Today Button */}
                             <button
                               type="button"
                               onClick={() => handleScheduleStage(selectedNotebook, stage, currentDate)}
@@ -575,7 +622,6 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                               <span>{isScheduledToday ? 'שבץ שוב' : 'להיום'}</span>
                             </button>
 
-                            {/* Schedule To Bank */}
                             <button
                               type="button"
                               onClick={() => handleScheduleStage(selectedNotebook, stage, 'backlog')}
@@ -585,7 +631,6 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                               <span>לבנק</span>
                             </button>
 
-                            {/* Edit Stage Button */}
                             <button
                               type="button"
                               onClick={() => {
@@ -600,7 +645,6 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
 
-                            {/* Delete Stage Button */}
                             <button
                               type="button"
                               onClick={() => handleDeleteStage(stage.id)}
@@ -629,7 +673,7 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                       handleAddStageToCurrent();
                     }
                   }}
-                  placeholder="הוסף שלב תרגול חדש למחברת זו..."
+                  placeholder="הוסף שלב תרגול נוסף למחברת זו..."
                   className="flex-1 px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/30"
                 />
                 <div className="flex items-center gap-1 text-xs shrink-0">
@@ -655,95 +699,198 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
           )}
 
           {/* ======================================================== */}
-          {/* TAB 3: ADD NEW GOOGLE LM NOTEBOOK */}
+          {/* TAB 3: ADD NEW GOOGLE LM NOTEBOOK & DECOMPOSE WIZARD */}
           {/* ======================================================== */}
           {activeTab === 'add' && (
             <form onSubmit={handleCreateNotebook} className="space-y-4">
-              <div className="p-4 bg-purple-50/60 dark:bg-purple-950/30 rounded-2xl border border-purple-200/80 dark:border-purple-800/60">
-                <h3 className="text-sm font-bold text-purple-950 dark:text-purple-100 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-purple-600" />
-                  <span>הוספת מחברת GoogleLM / NotebookLM חדשה</span>
-                </h3>
-                <p className="text-xs text-purple-800/80 dark:text-purple-300/80 mt-1">
-                  הזיני את קישור המחברת והדביקי את השלבים מתוך קובץ התוכנית. המערכת תפרק אותם מיד לשלבים עצמאיים.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    שם המחברת / נושא הלמידה *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newTitle}
-                    onChange={(e) => setNewTitle(e.target.value)}
-                    placeholder="למשל: Machine Learning Fundamentals, אנגלית עסקית..."
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/30"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    אבן דרך (Milestone)
-                  </label>
-                  <input
-                    type="text"
-                    value={newMilestone}
-                    onChange={(e) => setNewMilestone(e.target.value)}
-                    placeholder="למשל: Machine Learning (GoogleLM)"
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/30"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  קישור ישיר למחברת ב-NotebookLM
-                </label>
-                <input
-                  type="url"
-                  value={newUrl}
-                  onChange={(e) => setNewUrl(e.target.value)}
-                  placeholder="https://notebooklm.link.google/... או https://notebooklm.google.com/notebook/..."
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/30 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  תיאור קצר (אופציונלי)
-                </label>
-                <input
-                  type="text"
-                  value={newDescription}
-                  onChange={(e) => setNewDescription(e.target.value)}
-                  placeholder="מטרת התוכנית, חומרים נלווים ויעדים מרכזיים"
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none"
-                />
-              </div>
-
-              {/* Raw stages paste area */}
-              <div className="p-3.5 bg-slate-50 dark:bg-slate-850 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-2">
+              {/* Wizard Step 1: Open NotebookLM to pick a notebook */}
+              <div className="p-3.5 bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-950/40 dark:to-indigo-950/40 rounded-2xl border border-purple-200/80 dark:border-purple-800/60 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <label className="block text-xs font-bold text-slate-900 dark:text-white">
-                    פירוק שלבים מתוך הקובץ שבמחברת (הדבקה מהירה)
-                  </label>
-                  <span className="text-[10px] text-slate-400">
-                    שורה נפרדת לכל שלב (למשל: "שלב 1: מבוא לרשתות נוירונים (30 דק')")
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-purple-600 text-white text-xs font-extrabold flex items-center justify-center shrink-0">
+                      1
+                    </span>
+                    <span className="text-xs sm:text-sm font-bold text-purple-950 dark:text-purple-100">
+                      בחירת המחברת ב-NotebookLM
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenNotebookLMForNotebook}
+                    className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Brain className="w-3.5 h-3.5" />
+                    <span>פתח את NotebookLM ↗</span>
+                  </button>
                 </div>
-                <textarea
-                  value={rawStagesInput}
-                  onChange={(e) => setRawStagesInput(e.target.value)}
-                  rows={4}
-                  placeholder={`הדביקי כאן את רשימת השלבים מתוך הקובץ במחברת:\n1. שלב ראשון: הגדרת מטרות (20 דק')\n2. שלב שני: קריאת מאמר יסוד ופתרון תרגיל\n3. שלב שלישי: יישום בפועל`}
-                  className="w-full p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/30"
-                />
+
+                <p className="text-[11px] text-purple-800/80 dark:text-purple-300/80">
+                  לחצי על הכפתור לפתיחת NotebookLM, בחרי את המחברת הרצויה, והדביקי כאן את הקישור שלה:
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      קישור המחברת ב-NotebookLM *
+                    </label>
+                    <input
+                      type="url"
+                      required
+                      value={newUrl}
+                      onChange={(e) => setNewUrl(e.target.value)}
+                      placeholder="https://notebooklm.link.google/... או notebooklm.google.com/notebook/..."
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-purple-300 dark:border-purple-700 rounded-xl text-xs dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-purple-500/30"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      שם המחברת / נושא הלמידה *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={newTitle}
+                      onChange={(e) => setNewTitle(e.target.value)}
+                      placeholder="למשל: Daily Assertive Practice Plan, Machine Learning..."
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/30"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2">
+              {/* Wizard Step 2: Open NotebookLM to pick the plan file */}
+              <div className="p-3.5 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 rounded-2xl border border-indigo-200/80 dark:border-indigo-800/60 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-extrabold flex items-center justify-center shrink-0">
+                      2
+                    </span>
+                    <span className="text-xs sm:text-sm font-bold text-indigo-950 dark:text-indigo-100">
+                      בחירת תוכנית הפעולה במחברת
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenNotebookLMForPlan}
+                    className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span>פתח את המחברת לבחירת התוכנית ↗</span>
+                  </button>
+                </div>
+
+                <p className="text-[11px] text-indigo-800/80 dark:text-indigo-300/80">
+                  בתוך המחברת, אתרי את קובץ או הערת תוכנית הפעולה (למשל: <strong>Daily assertive practice plan</strong>):
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      שם קובץ התוכנית / הנושא במחברת
+                    </label>
+                    <input
+                      type="text"
+                      value={planFileName}
+                      onChange={(e) => setPlanFileName(e.target.value)}
+                      placeholder="למשל: Daily assertive practice plan"
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      אבן דרך (Milestone)
+                    </label>
+                    <input
+                      type="text"
+                      value={newMilestone}
+                      onChange={(e) => setNewMilestone(e.target.value)}
+                      placeholder="למשל: Daily Assertive Practice (GoogleLM)"
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    הדבקת תוכן התוכנית (אופציונלי - לפירוק מדויק)
+                  </label>
+                  <textarea
+                    value={rawPastedContent}
+                    onChange={(e) => setRawPastedContent(e.target.value)}
+                    rows={2}
+                    placeholder="באפשרותך להעתיק ולהדביק את שלבי התוכנית מתוך הקובץ שבמחברת..."
+                    className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Wizard Step 3: Decompose button */}
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={handleDecomposePlan}
+                  className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 active:scale-98 text-white font-extrabold text-xs sm:text-sm shadow-md shadow-purple-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <Wand2 className="w-4 h-4 stroke-[2.5]" />
+                  <span>פרק את התוכנית לתתי משימות (בהתאם ללינק) 🪄</span>
+                </button>
+
+                {/* Decomposed sub-tasks preview */}
+                {hasDecomposed && (
+                  <div className="p-3.5 bg-white dark:bg-slate-850 rounded-2xl border-2 border-emerald-400 dark:border-emerald-600 space-y-2.5 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-700">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                        <Check className="w-4 h-4 text-emerald-600" />
+                        <span>חולצו בהצלחה {decomposedStages.length} תתי-משימות לתוכנית:</span>
+                      </div>
+                      <span className="text-[11px] text-slate-400">
+                        ⏱️ סה״כ: {decomposedStages.reduce((sum, s) => sum + (s.durationMinutes || 0), 0)} דקות
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {decomposedStages.map((stg, i) => (
+                        <div
+                          key={stg.id || i}
+                          className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold flex items-center justify-center shrink-0">
+                              {i + 1}
+                            </span>
+                            <span className="font-semibold text-slate-800 dark:text-slate-100 truncate">
+                              {stg.title}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold shrink-0">
+                            {stg.durationMinutes} דק׳
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Schedule distribution option */}
+                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={scheduleToWeekImmediately}
+                          onChange={(e) => setScheduleToWeekImmediately(e.target.checked)}
+                          className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500"
+                        />
+                        <span>פזר תתי-משימות אלו לאורך השבוע (משימה בכל יום החל מהיום) 📅</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Submit / Finish */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                 <button
                   type="button"
                   onClick={() => setActiveTab('list')}
@@ -754,10 +901,10 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                 <button
                   type="submit"
                   disabled={!newTitle.trim()}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 active:scale-95 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
                 >
                   <Check className="w-4 h-4 stroke-[2.5]" />
-                  <span>שמור מחברת חדשה ושלבים 🚀</span>
+                  <span>שמור מחברת זו והחל תוכנית 🚀</span>
                 </button>
               </div>
             </form>
