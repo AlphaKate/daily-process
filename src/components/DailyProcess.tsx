@@ -3,6 +3,7 @@ import { Task, TaskCategory } from '../types';
 import { TaskItem } from './TaskItem';
 import { GoalsTimelineModal } from './GoalsTimelineModal';
 import { CurriculumImportModal } from './CurriculumImportModal';
+import { NotebookManagerModal } from './NotebookManagerModal';
 import { getStoredTasks, saveStoredTasks, getTodayDateString } from '../services/storage';
 import {
   SuperListItem,
@@ -77,6 +78,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
   const [goalsViewMode, setGoalsViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
   const [isCurriculumModalOpen, setIsCurriculumModalOpen] = useState(false);
+  const [isNotebookManagerOpen, setIsNotebookManagerOpen] = useState(false);
   const [casualViewMode, setCasualViewMode] = useState<'today' | 'super'>('today');
   const [allTasksExpanded, setAllTasksExpanded] = useState<boolean | undefined>(undefined);
   const [weekDraggedTaskId, setWeekDraggedTaskId] = useState<string | null>(null);
@@ -166,6 +168,17 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
     saveStoredTasks(updated);
     if (_onTasksSynced) {
       _onTasksSynced(newTasks, []);
+    } else {
+      setLocalTasksVersion(v => v + 1);
+    }
+  };
+
+  const handleScheduleNotebookStage = (newTask: Task) => {
+    const stored = getStoredTasks();
+    const updated = [newTask, ...stored];
+    saveStoredTasks(updated);
+    if (_onTasksSynced) {
+      _onTasksSynced([newTask], []);
     } else {
       setLocalTasksVersion(v => v + 1);
     }
@@ -415,15 +428,15 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
               <span className="hidden md:inline">לוח זמנים</span>
             </button>
 
-            {/* Open Curriculum / NotebookLM Importer */}
+            {/* Open NotebookLM Manager & Multi-Topic Learning Hub */}
             <button
               type="button"
-              onClick={() => setIsCurriculumModalOpen(true)}
+              onClick={() => setIsNotebookManagerOpen(true)}
               className="p-1.5 text-xs text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/50 rounded-xl border border-purple-200 dark:border-purple-800 flex items-center gap-1 font-semibold transition-colors cursor-pointer"
-              title="ייבא ופזר תוכנית עבודה ממחברת NotebookLM או Google Docs"
+              title="ניהול מחברות למידה ב-GoogleLM, עריכת שלבים ושילוב נושאים בכל יום"
             >
               <Brain className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
-              <span className="hidden sm:inline">ייבוא מ-NotebookLM</span>
+              <span className="hidden sm:inline">מחברות למידה & GoogleLM</span>
             </button>
 
             {/* Quick Add Goal */}
@@ -1213,6 +1226,15 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
         currentDate={currentDate}
         onClose={() => setIsCurriculumModalOpen(false)}
         onImportTasks={handleImportCurriculumTasks}
+      />
+
+      {/* 7. NOTEBOOKLM MULTI-PROGRAM MANAGER MODAL */}
+      <NotebookManagerModal
+        isOpen={isNotebookManagerOpen}
+        currentDate={currentDate}
+        allTasks={masterTasks}
+        onClose={() => setIsNotebookManagerOpen(false)}
+        onScheduleStage={handleScheduleNotebookStage}
       />
     </div>
   );
