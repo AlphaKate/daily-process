@@ -17,7 +17,8 @@ import {
   Inbox,
   GripVertical,
   CalendarPlus,
-  ArrowDownToLine
+  ArrowDownToLine,
+  Brain
 } from 'lucide-react';
 
 interface GoalsTimelineModalProps {
@@ -612,11 +613,19 @@ export const GoalsTimelineModal: React.FC<GoalsTimelineModalProps> = ({
                                           href={docUrl}
                                           target="_blank"
                                           rel="noopener noreferrer"
-                                          className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-0.5"
-                                          title="פתח ב-Google Docs"
+                                          className={`text-[10px] hover:underline inline-flex items-center gap-0.5 ${
+                                            docUrl.includes('notebooklm')
+                                              ? 'text-purple-600 dark:text-purple-400 font-bold'
+                                              : 'text-blue-600 dark:text-blue-400'
+                                          }`}
+                                          title={docUrl.includes('notebooklm') ? 'פתח ב-NotebookLM' : 'פתח ב-Google Docs'}
                                         >
-                                          <FileText className="w-2.5 h-2.5" />
-                                          <span>Docs</span>
+                                          {docUrl.includes('notebooklm') ? (
+                                            <Brain className="w-2.5 h-2.5" />
+                                          ) : (
+                                            <FileText className="w-2.5 h-2.5" />
+                                          )}
+                                          <span>{docUrl.includes('notebooklm') ? 'NotebookLM' : 'Docs'}</span>
                                         </a>
                                       )}
 
@@ -825,10 +834,18 @@ export const GoalsTimelineModal: React.FC<GoalsTimelineModalProps> = ({
                                 href={docUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1 font-medium"
+                                className={`hover:underline inline-flex items-center gap-1 font-semibold ${
+                                  docUrl.includes('notebooklm')
+                                    ? 'text-purple-600 dark:text-purple-400'
+                                    : 'text-blue-600 dark:text-blue-400'
+                                }`}
                               >
-                                <FileText className="w-3 h-3" />
-                                <span>מסמך מקור</span>
+                                {docUrl.includes('notebooklm') ? (
+                                  <Brain className="w-3 h-3" />
+                                ) : (
+                                  <FileText className="w-3 h-3" />
+                                )}
+                                <span>{docUrl.includes('notebooklm') ? 'NotebookLM' : 'מסמך מקור'}</span>
                               </a>
                             )}
                           </div>

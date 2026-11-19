@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Task, TaskCategory } from '../types';
 import { TaskItem } from './TaskItem';
 import { GoalsTimelineModal } from './GoalsTimelineModal';
+import { CurriculumImportModal } from './CurriculumImportModal';
 import { getStoredTasks, saveStoredTasks, getTodayDateString } from '../services/storage';
 import {
   SuperListItem,
@@ -35,7 +36,8 @@ import {
   ArrowDownToLine,
   ShoppingBag,
   Sunrise,
-  Inbox
+  Inbox,
+  Brain
 } from 'lucide-react';
 
 interface DailyProcessProps {
@@ -74,6 +76,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
   const [showDoneSection, setShowDoneSection] = useState(true);
   const [goalsViewMode, setGoalsViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
+  const [isCurriculumModalOpen, setIsCurriculumModalOpen] = useState(false);
   const [casualViewMode, setCasualViewMode] = useState<'today' | 'super'>('today');
   const [allTasksExpanded, setAllTasksExpanded] = useState<boolean | undefined>(undefined);
   const [weekDraggedTaskId, setWeekDraggedTaskId] = useState<string | null>(null);
@@ -153,6 +156,17 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
           : t
       );
       saveStoredTasks(updated);
+      setLocalTasksVersion(v => v + 1);
+    }
+  };
+
+  const handleImportCurriculumTasks = (newTasks: Task[]) => {
+    const stored = getStoredTasks();
+    const updated = [...newTasks, ...stored];
+    saveStoredTasks(updated);
+    if (_onTasksSynced) {
+      _onTasksSynced(newTasks, []);
+    } else {
       setLocalTasksVersion(v => v + 1);
     }
   };
@@ -394,11 +408,22 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
             {/* Open Full Timeline Planning Modal */}
             <button
               onClick={() => setIsTimelineModalOpen(true)}
-              className="p-1.5 text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-xl border border-emerald-200 dark:border-emerald-800 flex items-center gap-1 font-semibold transition-colors"
+              className="p-1.5 text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 rounded-xl border border-emerald-200 dark:border-emerald-800 flex items-center gap-1 font-semibold transition-colors cursor-pointer"
               title="פתח לוח זמנים מורחב ליעדים"
             >
               <Calendar className="w-3.5 h-3.5" />
               <span className="hidden md:inline">לוח זמנים</span>
+            </button>
+
+            {/* Open Curriculum / NotebookLM Importer */}
+            <button
+              type="button"
+              onClick={() => setIsCurriculumModalOpen(true)}
+              className="p-1.5 text-xs text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 hover:bg-purple-100 dark:hover:bg-purple-900/50 rounded-xl border border-purple-200 dark:border-purple-800 flex items-center gap-1 font-semibold transition-colors cursor-pointer"
+              title="ייבא ופזר תוכנית עבודה ממחברת NotebookLM או Google Docs"
+            >
+              <Brain className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+              <span className="hidden sm:inline">ייבוא מ-NotebookLM</span>
             </button>
 
             {/* Quick Add Goal */}
@@ -1180,6 +1205,14 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
           onQuickAddTask('goals');
         }}
         onRescheduleGoal={handleReschedule}
+      />
+
+      {/* 6. CURRICULUM / NOTEBOOKLM IMPORTER MODAL */}
+      <CurriculumImportModal
+        isOpen={isCurriculumModalOpen}
+        currentDate={currentDate}
+        onClose={() => setIsCurriculumModalOpen(false)}
+        onImportTasks={handleImportCurriculumTasks}
       />
     </div>
   );

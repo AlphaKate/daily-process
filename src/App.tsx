@@ -7,6 +7,7 @@ import {
   getAppSettings,
   saveAppSettings,
   checkUnfinishedPreviousTasks,
+  ensureAssertivePracticePlanSeeded
 } from './services/storage';
 import {
   initGoogleTokenClient,
@@ -223,7 +224,7 @@ export const App: React.FC = () => {
 
   // Initialize data, theme, and Google Token Client
   useEffect(() => {
-    const loadedTasks = getStoredTasks();
+    const loadedTasks = ensureAssertivePracticePlanSeeded();
     setTasks(loadedTasks);
 
     // Dark mode initialization

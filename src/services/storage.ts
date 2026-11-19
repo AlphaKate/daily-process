@@ -57,6 +57,84 @@ export const saveAppSettings = (settings: AppSettings): void => {
   localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
 };
 
+export const ensureAssertivePracticePlanSeeded = (): Task[] => {
+  const tasks = getStoredTasks();
+  const exists = tasks.some(
+    t => t.link?.includes('0Uhj6QVmB40d') || t.milestoneTitle?.includes('Daily Assertive Practice')
+  );
+  if (!exists) {
+    const today = getTodayDateString();
+    const now = new Date().toISOString();
+    const [y, m, d] = today.split('-').map(Number);
+    const startDate = new Date(y, m - 1, d);
+
+    const stages = [
+      {
+        title: 'שלב 1: מיפוי זכויות אישיות וזיהוי דפוסי תקשורת',
+        description: 'הגדרת זכויות אישיות (Assertiveness Bill of Rights) וזיהוי מצבים ביום-יום בהם קשה לעמוד על שלך מתוך המחברת ב-NotebookLM.',
+        duration: 20
+      },
+      {
+        title: 'שלב 2: תרגול אמירת "לא" ברורה וללא התנצלות מוגזמת',
+        description: 'טכניקת סירוב אדיב וישיר (Saying No with Clarity) תוך שמירה על יחסים וכבוד הדדי, על פי עקרונות התוכנית.',
+        duration: 20
+      },
+      {
+        title: 'שלב 3: שימוש במסרי "אני" וניסוח צרכים ישיר',
+        description: 'מעבר מהאשמות ("אתה תמיד...") לניסוח תחושות וצרכים ברורים ("אני מרגישה ש... ואשמח אם...") בעזרת דוגמאות ב-NotebookLM.',
+        duration: 20
+      },
+      {
+        title: 'שלב 4: טכניקות עמידה בלחץ וערפול מול ביקורת',
+        description: 'תרגול טכניקת התקליט השבור (Broken Record) וערפול (Fogging) כדי לשמור על קור רוח ואיפוק מול לחץ או שיפוטיות.',
+        duration: 25
+      },
+      {
+        title: 'שלב 5: הצבת גבולות בסביבה אישית ועסקית',
+        description: 'הגדרת קווים אדומים, תיאום ציפיות מקצועי והצבת גבולות ברורים בעבודה ומול קולגות/משפחה.',
+        duration: 25
+      },
+      {
+        title: 'שלב 6: שפת גוף, קשר עין וטון אסרטיבי',
+        description: 'חיזוק מרכיבי התקשורת הלא-מילולית: יציבה בטוחה, קשר עין ישיר ודיבור רגוע ושקול בזמן העברת מסרים.',
+        duration: 20
+      },
+      {
+        title: 'שלב 7: סקירת התקדמות, תובנות והטמעה',
+        description: 'סיכום השבוע, כתיבת תובנות במחברת NotebookLM, זיהוי הצלחות והגדרת עקרונות להמשך תרגול שוטף.',
+        duration: 30
+      }
+    ];
+
+    const newTasks: Task[] = stages.map((stg, i) => {
+      const taskDateObj = new Date(startDate);
+      taskDateObj.setDate(startDate.getDate() + i);
+      const yr = taskDateObj.getFullYear();
+      const mo = String(taskDateObj.getMonth() + 1).padStart(2, '0');
+      const da = String(taskDateObj.getDate()).padStart(2, '0');
+
+      return {
+        id: `assertive-plan-${i + 1}-${Date.now()}`,
+        title: stg.title,
+        description: stg.description,
+        category: 'goals',
+        completed: false,
+        date: `${yr}-${mo}-${da}`,
+        durationMinutes: stg.duration,
+        milestoneTitle: 'Daily Assertive Practice (GoogleLM)',
+        link: 'https://notebooklm.link.google/0Uhj6QVmB40d',
+        createdAt: now,
+        updatedAt: now
+      };
+    });
+
+    const combined = [...newTasks, ...tasks];
+    saveStoredTasks(combined);
+    return combined;
+  }
+  return tasks;
+};
+
 export const getStoredTasks = (): Task[] => {
   const raw = localStorage.getItem(TASKS_STORAGE_KEY);
   if (!raw) {
