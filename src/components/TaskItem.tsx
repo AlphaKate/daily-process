@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Task } from '../types';
 import {
   Clock,
@@ -12,7 +12,9 @@ import {
   Sparkles,
   Video,
   Calendar,
-  ListTodo
+  ListTodo,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -21,6 +23,7 @@ interface TaskItemProps {
   onToggleComplete: (task: Task) => void;
   onEdit: (task: Task) => void;
   onDeleteRequest: (task: Task) => void;
+  forceExpanded?: boolean;
 }
 
 interface MeetingInfo {
@@ -101,8 +104,16 @@ export const TaskItem: React.FC<TaskItemProps> = ({
   onToggleComplete,
   onEdit,
   onDeleteRequest,
+  forceExpanded
 }) => {
+  const [isExpanded, setIsExpanded] = useState<boolean>(forceExpanded ?? false);
   const [justCompleted, setJustCompleted] = useState(false);
+
+  useEffect(() => {
+    if (forceExpanded !== undefined) {
+      setIsExpanded(forceExpanded);
+    }
+  }, [forceExpanded]);
 
   const handleToggle = () => {
     // If completing a Goal or Must Do, celebrate with confetti effect!
@@ -190,9 +201,16 @@ export const TaskItem: React.FC<TaskItemProps> = ({
   // Don't duplicate docUrl if it is already displayed in meeting quick action
   const shouldShowDocUrl = docUrl && (!meetingInfo || meetingInfo.url !== docUrl);
 
+  const hasDetails = Boolean(
+    task.description ||
+    meetingInfo ||
+    task.milestoneTitle ||
+    shouldShowDocUrl
+  );
+
   return (
     <div
-      className={`group relative bg-white dark:bg-slate-800/90 rounded-2xl p-4 shadow-sm hover:shadow-md border border-slate-200/80 dark:border-slate-700/80 transition-all duration-200 ${
+      className={`group relative bg-white dark:bg-slate-800/90 rounded-2xl p-3 sm:p-4 shadow-xs hover:shadow-md border border-slate-200/80 dark:border-slate-700/80 transition-all duration-200 ${
         categoryStyle.border
       } ${
         task.completed
@@ -202,25 +220,26 @@ export const TaskItem: React.FC<TaskItemProps> = ({
           : ''
       }`}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-2.5 sm:gap-3">
         {/* Custom Accessible Checkbox */}
         <button
           type="button"
           onClick={handleToggle}
-          className={`mt-0.5 w-6 h-6 rounded-lg flex items-center justify-center border-2 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 ${
+          className={`mt-0.5 w-5 h-5 sm:w-6 sm:h-6 rounded-lg flex items-center justify-center border-2 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 shrink-0 ${
             task.completed
-              ? 'bg-emerald-500 border-emerald-500 text-white shadow-sm'
+              ? 'bg-emerald-500 border-emerald-500 text-white shadow-2xs'
               : `bg-transparent ${categoryStyle.checkboxBorder} hover:scale-105`
           }`}
           aria-label={task.completed ? 'סמן כלא בוצע' : 'סמן כבוצע'}
         >
-          {task.completed && <Check className="w-4 h-4 stroke-[3]" />}
+          {task.completed && <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[3]" />}
         </button>
 
-        {/* Content details */}
+        {/* Content Details */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center flex-wrap gap-2 mb-1.5">
-            {/* Category tag */}
+          {/* Top Line: Tags, Time & Quick Indicators */}
+          <div className="flex items-center flex-wrap gap-1.5 sm:gap-2 mb-1">
+            {/* Category Tag */}
             <span
               className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${categoryStyle.badgeBg}`}
             >
@@ -285,6 +304,38 @@ export const TaskItem: React.FC<TaskItemProps> = ({
               </span>
             )}
 
+            {/* Compact Indicator Icons (if collapsed and has attachments) */}
+            {!isExpanded && (
+              <div className="flex items-center gap-1 text-slate-400 dark:text-slate-500 text-xs">
+                {meetingInfo && (
+                  <span
+                    className="p-0.5 px-1.5 rounded-md bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center gap-1"
+                    title={`פגישת וידאו (${meetingInfo.platformLabel})`}
+                  >
+                    <Video className="w-3 h-3" />
+                    <span className="hidden sm:inline">פגישה</span>
+                  </span>
+                )}
+                {shouldShowDocUrl && (
+                  <span
+                    className="p-0.5 px-1.5 rounded-md bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold flex items-center gap-1"
+                    title="מקושר למסמך יעד ב-Google Docs"
+                  >
+                    <FileText className="w-3 h-3" />
+                    <span className="hidden sm:inline">מסמך</span>
+                  </span>
+                )}
+                {task.description && (
+                  <span
+                    className="p-0.5 rounded-md text-slate-400 dark:text-slate-500"
+                    title="כולל הערות ופירוט"
+                  >
+                    <FileText className="w-3 h-3" />
+                  </span>
+                )}
+              </div>
+            )}
+
             {/* Completed celebration & Google Doc update indicator */}
             {task.completed && isGoal && (
               <>
@@ -328,103 +379,132 @@ export const TaskItem: React.FC<TaskItemProps> = ({
             )}
           </div>
 
-          {/* Task Title */}
-          <h3
-            className={`text-sm sm:text-base font-semibold leading-snug transition-colors ${
-              task.completed
-                ? 'line-through text-slate-400 dark:text-slate-500'
-                : 'text-slate-900 dark:text-slate-100'
-            }`}
+          {/* Task Title (Clicking title expands/collapses if has details) */}
+          <div
+            onClick={() => hasDetails && setIsExpanded(prev => !prev)}
+            className={`cursor-pointer select-none ${hasDetails ? 'hover:text-emerald-600 dark:hover:text-emerald-400' : ''}`}
           >
-            {task.title}
-          </h3>
+            <h3
+              className={`text-sm sm:text-base font-bold leading-snug transition-colors ${
+                task.completed
+                  ? 'line-through text-slate-400 dark:text-slate-500 font-normal'
+                  : 'text-slate-900 dark:text-slate-100'
+              }`}
+            >
+              {task.title}
+            </h3>
+          </div>
 
-          {/* Optional Description */}
-          {task.description && (
-            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400 whitespace-pre-line leading-relaxed">
-              {task.description}
-            </p>
-          )}
+          {/* Expanded Content Area (Visible only when isExpanded is true) */}
+          {isExpanded && (
+            <div className="mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-700/60 space-y-2.5 animate-in fade-in duration-150">
+              {/* Optional Description */}
+              {task.description && (
+                <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-line leading-relaxed bg-slate-50/60 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                  {task.description}
+                </p>
+              )}
 
-          {/* Google Meet / Video Conference Quick Action Button */}
-          {meetingInfo && (
-            <div className="mt-2.5">
-              <a
-                href={meetingInfo.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-150 shadow-xs hover:shadow active:scale-95 group/meet ${
-                  meetingInfo.platform === 'zoom'
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'
-                    : meetingInfo.platform === 'teams'
-                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-500/20'
-                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
-                }`}
-                title={`פתח קישור לפגישה (${meetingInfo.platformLabel}) בכרטיסייה חדשה`}
-              >
-                <div className="w-5 h-5 rounded-md bg-white/20 flex items-center justify-center shrink-0 group-hover/meet:scale-110 transition-transform">
-                  <Video className="w-3.5 h-3.5 text-white" />
-                </div>
-                <span>{meetingInfo.actionLabel}</span>
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-black/15 text-white/90">
-                  {meetingInfo.platformLabel}
-                </span>
-                <ExternalLink className="w-3 h-3 text-white/70 group-hover/meet:text-white transition-colors" />
-              </a>
-            </div>
-          )}
-
-          {/* Metadata footer: Milestone Badge & Direct Google Doc / Link */}
-          {(task.milestoneTitle || shouldShowDocUrl) && (
-            <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-700/50 flex flex-wrap items-center gap-2 text-xs">
-              {/* Milestone badge (e.g. 'Machine Learning / GoogleLM') */}
-              {task.milestoneTitle && (
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold shadow-xs">
-                  <Milestone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                  <span className="truncate max-w-[240px] sm:max-w-none">{task.milestoneTitle}</span>
+              {/* Google Meet / Video Conference Quick Action Button */}
+              {meetingInfo && (
+                <div>
+                  <a
+                    href={meetingInfo.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-150 shadow-xs hover:shadow active:scale-95 group/meet ${
+                      meetingInfo.platform === 'zoom'
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'
+                        : meetingInfo.platform === 'teams'
+                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-500/20'
+                        : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-500/20'
+                    }`}
+                    title={`פתח קישור לפגישה (${meetingInfo.platformLabel}) בכרטיסייה חדשה`}
+                  >
+                    <div className="w-5 h-5 rounded-md bg-white/20 flex items-center justify-center shrink-0 group-hover/meet:scale-110 transition-transform">
+                      <Video className="w-3.5 h-3.5 text-white" />
+                    </div>
+                    <span>{meetingInfo.actionLabel}</span>
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-black/15 text-white/90">
+                      {meetingInfo.platformLabel}
+                    </span>
+                    <ExternalLink className="w-3 h-3 text-white/70 group-hover/meet:text-white transition-colors" />
+                  </a>
                 </div>
               )}
 
-              {/* Direct Link to Google Doc or External Link */}
-              {shouldShowDocUrl && (
-                <a
-                  href={docUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors shadow-xs ${
-                    isGoogleDoc
-                      ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/70 hover:bg-blue-100 dark:hover:bg-blue-900/60 hover:text-blue-900 dark:hover:text-blue-100'
-                      : 'bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                  title={isGoogleDoc ? 'פתח מסמך ב-Google Docs (נפתח בכרטיסייה חדשה)' : 'פתח קישור מקור'}
-                >
-                  <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                  <span>{isGoogleDoc ? 'פתח ב-Google Docs' : 'קישור למסמך'}</span>
-                  <ExternalLink className="w-3 h-3 opacity-75" />
-                </a>
+              {/* Metadata Footer: Milestone Badge & Direct Google Doc / Link */}
+              {(task.milestoneTitle || shouldShowDocUrl) && (
+                <div className="flex flex-wrap items-center gap-2 text-xs pt-1">
+                  {/* Milestone Badge */}
+                  {task.milestoneTitle && (
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold shadow-2xs">
+                      <Milestone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <span className="truncate max-w-[240px] sm:max-w-none">{task.milestoneTitle}</span>
+                    </div>
+                  )}
+
+                  {/* Direct Link to Google Doc or External Link */}
+                  {shouldShowDocUrl && (
+                    <a
+                      href={docUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium transition-colors shadow-2xs ${
+                        isGoogleDoc
+                          ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/70 hover:bg-blue-100 dark:hover:bg-blue-900/60 hover:text-blue-900 dark:hover:text-blue-100'
+                          : 'bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                      title={isGoogleDoc ? 'פתח מסמך ב-Google Docs (נפתח בכרטיסייה חדשה)' : 'פתח קישור מקור'}
+                    >
+                      <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                      <span>{isGoogleDoc ? 'פתח ב-Google Docs' : 'קישור למסמך'}</span>
+                      <ExternalLink className="w-3 h-3 opacity-75" />
+                    </a>
+                  )}
+                </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Action buttons (Edit & Delete) */}
-        <div className="flex items-center gap-1 sm:opacity-90 transition-opacity">
+        {/* Action Buttons (Edit, Delete & Expand Toggle) */}
+        <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
           <button
+            type="button"
             onClick={() => onEdit(task)}
-            className="p-1.5 text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 rounded-lg transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 rounded-xl transition-colors"
             title="ערוך משימה"
           >
-            <Edit2 className="w-4 h-4" />
+            <Edit2 className="w-3.5 h-3.5" />
           </button>
           <button
+            type="button"
             onClick={() => onDeleteRequest(task)}
-            className="p-1.5 text-slate-400 hover:text-rose-600 dark:text-slate-500 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors"
+            className="p-1.5 text-slate-400 hover:text-rose-600 dark:text-slate-500 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors"
             title="מחק משימה (מחייב אישור)"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-3.5 h-3.5" />
           </button>
+
+          {/* Chevron Expand/Collapse Toggle Button */}
+          {hasDetails && (
+            <button
+              type="button"
+              onClick={() => setIsExpanded(prev => !prev)}
+              className="p-1.5 text-slate-400 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 rounded-xl transition-transform"
+              title={isExpanded ? 'כווץ פרטים' : 'הרחב פרטים מלאים'}
+              aria-expanded={isExpanded}
+            >
+              {isExpanded ? (
+                <ChevronUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              ) : (
+                <ChevronDown className="w-4 h-4" />
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>

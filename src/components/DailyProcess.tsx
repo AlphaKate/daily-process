@@ -74,6 +74,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
   const [goalsViewMode, setGoalsViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
   const [casualViewMode, setCasualViewMode] = useState<'today' | 'super'>('today');
+  const [allTasksExpanded, setAllTasksExpanded] = useState<boolean | undefined>(undefined);
   const [superItems, setSuperItems] = useState<SuperListItem[]>(() => getSuperListItems());
   const [newSuperText, setNewSuperText] = useState('');
   const [isSuperSyncing, setIsSuperSyncing] = useState(false);
@@ -244,6 +245,21 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
         </div>
       )}
 
+      {/* GLOBAL VIEW CONTROLS (הרחב / כווץ הכל) */}
+      <div className="flex items-center justify-between text-xs px-1">
+        <span className="text-slate-400 font-medium">
+          {activeTasks.length} משימות מתוכננות להיום
+        </span>
+        <button
+          type="button"
+          onClick={() => setAllTasksExpanded(prev => (prev === true ? false : true))}
+          className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:border-emerald-300 transition-colors shadow-2xs cursor-pointer"
+        >
+          {allTasksExpanded ? <ChevronUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          <span>{allTasksExpanded ? 'כווץ הכל' : 'הרחב הכל'}</span>
+        </button>
+      </div>
+
       {/* 1. MUST DO SECTION */}
       <section className="space-y-3">
         <div className="flex items-center justify-between">
@@ -300,6 +316,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                 onToggleComplete={onToggleComplete}
                 onEdit={onEditTask}
                 onDeleteRequest={onDeleteRequest}
+                forceExpanded={allTasksExpanded}
               />
             ))}
           </div>
@@ -457,6 +474,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                     onToggleComplete={onToggleComplete}
                     onEdit={onEditTask}
                     onDeleteRequest={onDeleteRequest}
+                    forceExpanded={allTasksExpanded}
                   />
                 ))}
               </div>
@@ -801,6 +819,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                     onToggleComplete={onToggleComplete}
                     onEdit={onEditTask}
                     onDeleteRequest={onDeleteRequest}
+                    forceExpanded={allTasksExpanded}
                   />
                 ))}
               </div>
@@ -984,6 +1003,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                   onToggleComplete={onToggleComplete}
                   onEdit={onEditTask}
                   onDeleteRequest={onDeleteRequest}
+                  forceExpanded={allTasksExpanded}
                 />
               ))}
             </div>
