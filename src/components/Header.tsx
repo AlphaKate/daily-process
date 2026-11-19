@@ -81,28 +81,30 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
+    <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm transition-colors w-full overflow-hidden">
       <div className="max-w-3xl mx-auto px-3 sm:px-4 py-2.5">
-        {/* Top bar: Title & Actions */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center text-white shadow-md shadow-emerald-500/20 shrink-0">
-              <CheckSquare className="w-5 h-5 stroke-[2.5]" />
+        {/* Row 1: Brand & Utility Controls */}
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          {/* Logo & App Name */}
+          <div className="flex items-center gap-2 min-w-0 shrink-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center text-white shadow-md shadow-emerald-500/20 shrink-0">
+              <CheckSquare className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.5]" />
             </div>
-            <div>
-              <h1 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white leading-tight">
+            <div className="min-w-0">
+              <h1 className="text-xs sm:text-base font-black text-slate-900 dark:text-white leading-tight truncate">
                 יומי & התפתחות
               </h1>
-              <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400">
+              <p className="text-[9px] sm:text-[11px] text-slate-500 dark:text-slate-400 hidden xs:block">
                 Daily Process & Goals
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Utility Controls on Left (RTL) */}
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
             {/* Google Sync Status / Connect Button */}
             {googleUser ? (
-              <div className="flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 px-2 py-1 rounded-xl">
+              <div className="flex items-center gap-0.5 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 px-1.5 py-1 rounded-xl">
                 <button
                   onClick={onSyncGoogle}
                   disabled={isSyncing}
@@ -110,24 +112,24 @@ export const Header: React.FC<HeaderProps> = ({
                   title="סנכרן מול Google Drive & Calendar"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                  <span>{isSyncing ? 'מסנכרן...' : 'סנכרן'}</span>
+                  <span className="hidden sm:inline">{isSyncing ? 'מסנכרן...' : 'סנכרן'}</span>
                 </button>
                 <button
                   onClick={onLogoutGoogle}
                   className="p-1 text-slate-400 hover:text-rose-500 transition-colors"
                   title="התנתקות מ-Google"
                 >
-                  <LogOut className="w-3.5 h-3.5" />
+                  <LogOut className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                 </button>
               </div>
             ) : (
               <button
                 onClick={onConnectGoogle}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
+                className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[11px] sm:text-xs font-bold rounded-xl shadow-sm transition-all"
                 title="התחברות לחשבון Google כדי לסנכרן יומן ומסמכי יעדים"
               >
                 <LogIn className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>התחבר ל-Google</span>
+                <span className="hidden sm:inline">התחבר</span>
               </button>
             )}
 
@@ -136,19 +138,18 @@ export const Header: React.FC<HeaderProps> = ({
               href="https://to-do.microsoft.com/sharing?InvitationToken=cSHAtsnUNTW0E2q3AEdlYmuhB8FZ2Q3tILzClg0YBCn-KrWUF9s9KrPQZJrtOsYlCiEN015c05_7oQPJaeCRkA"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-sm transition-all"
+              className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1.5 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white text-[11px] sm:text-xs font-bold rounded-xl shadow-sm transition-all"
               title="פתח את רשימת סופר באפליקציית Microsoft To Do"
             >
               <ListTodo className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span className="hidden md:inline">רשימת "סופר"</span>
-              <span className="md:hidden">סופר</span>
+              <span>סופר</span>
             </a>
 
             {/* View switcher: Process vs Stats */}
-            <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+            <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 sm:p-1 rounded-xl border border-slate-200 dark:border-slate-700">
               <button
                 onClick={() => onViewChange('process')}
-                className={`flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg transition-all ${
+                className={`flex items-center gap-1 p-1 sm:px-2 sm:py-1 text-xs font-semibold rounded-lg transition-all ${
                   activeView === 'process'
                     ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -156,11 +157,11 @@ export const Header: React.FC<HeaderProps> = ({
                 title="ניהול יום"
               >
                 <CheckSquare className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">ניהול יום</span>
+                <span className="hidden md:inline">ניהול יום</span>
               </button>
               <button
                 onClick={() => onViewChange('stats')}
-                className={`flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg transition-all ${
+                className={`flex items-center gap-1 p-1 sm:px-2 sm:py-1 text-xs font-semibold rounded-lg transition-all ${
                   activeView === 'stats'
                     ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -168,7 +169,7 @@ export const Header: React.FC<HeaderProps> = ({
                 title="סטטיסטיקה"
               >
                 <BarChart3 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">סטטיסטיקה</span>
+                <span className="hidden md:inline">סטטיסטיקה</span>
               </button>
             </div>
 
@@ -196,29 +197,38 @@ export const Header: React.FC<HeaderProps> = ({
             >
               {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
             </button>
-
-            {/* Voice Task Button */}
-            {onOpenVoiceTask && (
-              <button
-                type="button"
-                onClick={onOpenVoiceTask}
-                className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/80 rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95 cursor-pointer"
-                title="הקלטת משימה קולית ל-Must Do (דיבור טבעי עם תאריך ושעה)"
-              >
-                <Mic className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400 stroke-[2.5]" />
-                <span className="hidden sm:inline">משימה קולית</span>
-              </button>
-            )}
-
-            {/* Quick Add Button */}
-            <button
-              onClick={onOpenAddTask}
-              className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white text-white dark:text-slate-900 font-bold text-xs rounded-xl shadow-sm transition-all"
-            >
-              <Plus className="w-4 h-4 stroke-[2.5]" />
-              <span className="hidden md:inline">משימה חדשה</span>
-            </button>
           </div>
+        </div>
+
+        {/* Row 2: Action Deck - Enlarged, Thumb-Friendly Task Creation Bar */}
+        <div className="mt-2.5 grid grid-cols-2 gap-2 w-full">
+          {/* Enlarged Voice Task Button */}
+          {onOpenVoiceTask && (
+            <button
+              type="button"
+              onClick={onOpenVoiceTask}
+              className="h-11 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-rose-500 via-rose-600 to-pink-600 hover:from-rose-600 hover:to-pink-700 active:scale-[0.98] text-white font-bold text-xs sm:text-sm rounded-2xl shadow-md shadow-rose-500/20 transition-all cursor-pointer group"
+              title="הקלטת משימה קולית ל-Must Do (דיבור טבעי עם תאריך ושעה)"
+            >
+              <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
+                <Mic className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white stroke-[2.5] animate-pulse" />
+              </div>
+              <span className="truncate">משימה קולית</span>
+            </button>
+          )}
+
+          {/* Quick Add Button */}
+          <button
+            type="button"
+            onClick={onOpenAddTask}
+            className="h-11 flex items-center justify-center gap-2 px-3 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-white active:scale-[0.98] text-white dark:text-slate-900 font-bold text-xs sm:text-sm rounded-2xl shadow-md transition-all cursor-pointer group"
+            title="הוספת משימה חדשה באופן ידני"
+          >
+            <div className="w-6 h-6 rounded-full bg-white/20 dark:bg-slate-900/10 flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
+              <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" />
+            </div>
+            <span className="truncate">משימה חדשה</span>
+          </button>
         </div>
 
         {/* Date Selector Navigation Bar */}

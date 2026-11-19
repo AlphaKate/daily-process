@@ -632,7 +632,7 @@ export const App: React.FC = () => {
   const filteredTasksForDate = tasks.filter(t => !t.isDeleted && t.date === currentDate);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200 overflow-x-hidden w-full max-w-full">
       {/* Top Header */}
       <Header
         currentDate={currentDate}
