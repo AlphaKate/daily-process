@@ -243,17 +243,17 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
         dir="rtl"
       >
         {/* Header */}
-        <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-rose-500/10 via-purple-500/5 to-transparent">
+        <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-orange-500/10 via-amber-500/5 to-transparent">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-md ${
-              isListening ? 'bg-rose-500 animate-pulse shadow-rose-500/30' : 'bg-slate-700 dark:bg-slate-800'
+              isListening ? 'bg-orange-500 animate-pulse shadow-orange-500/30' : 'bg-slate-700 dark:bg-slate-800'
             }`}>
               <Mic className="w-5 h-5 stroke-[2.5]" />
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-1.5">
                 <span>הוספת משימה קולית ל-Must Do</span>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300 border border-orange-300 dark:border-orange-800">
                   Must Do
                 </span>
               </h2>
@@ -280,8 +280,8 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
             {/* Pulsing rings when listening */}
             {isListening && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="w-28 h-28 rounded-full bg-rose-500/10 animate-ping" />
-                <div className="w-40 h-40 rounded-full bg-rose-500/5 animate-pulse" />
+                <div className="w-28 h-28 rounded-full bg-orange-500/10 animate-ping" />
+                <div className="w-40 h-40 rounded-full bg-orange-500/5 animate-pulse" />
               </div>
             )}
 
@@ -291,7 +291,7 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
               onClick={isListening ? stopListening : startListening}
               className={`relative z-10 w-20 h-20 rounded-full flex items-center justify-center text-white transition-all shadow-lg active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${
                 isListening
-                  ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-500/40 ring-4 ring-rose-300 dark:ring-rose-900/60 animate-pulse'
+                  ? 'bg-orange-500 hover:bg-orange-600 shadow-orange-500/40 ring-4 ring-orange-300 dark:ring-orange-900/60 animate-pulse'
                   : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'
               }`}
               title={!isSupported ? 'זיהוי קולי אינו נתמך בדפדפן זה' : isListening ? 'לחצי לעצירת ההקלטה' : 'לחצי להתחלת הקלטה'}
@@ -306,12 +306,12 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
             <div className="mt-3 relative z-10">
               <span className={`text-xs font-bold inline-flex items-center gap-1.5 px-3 py-1 rounded-full ${
                 isListening
-                  ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300'
+                  ? 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300'
                   : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
               }`}>
                 {isListening ? (
                   <>
-                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                    <span className="w-2 h-2 rounded-full bg-orange-500 animate-ping" />
                     <span>מקשיב עכשיו... (דברי חופשי)</span>
                   </>
                 ) : (
@@ -336,8 +336,8 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
 
           {/* Live Heard Transcript */}
           {(transcript || interimTranscript) && (
-            <div className="p-3 rounded-xl bg-purple-50/60 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/40 text-xs">
-              <div className="text-[11px] font-bold text-purple-700 dark:text-purple-300 mb-1 flex items-center gap-1">
+            <div className="p-3 rounded-xl bg-orange-50/60 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-900/40 text-xs">
+              <div className="text-[11px] font-bold text-orange-700 dark:text-orange-300 mb-1 flex items-center gap-1">
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>מה שנשמע:</span>
               </div>
@@ -359,7 +359,7 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
                 value={parsedTitle}
                 onChange={e => handleTextChange(e.target.value)}
                 placeholder="למשל: פגישה עם דני, לקנות תרופות..."
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500 text-slate-900 dark:text-white"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-white"
                 required
               />
             </div>
@@ -369,10 +369,10 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
               {/* Date */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5 text-rose-500" />
+                  <Calendar className="w-3.5 h-3.5 text-orange-500" />
                   <span>תאריך יעד:</span>
                   {dateBadge && (
-                    <span className="text-[10px] bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 px-1.5 py-0.2 rounded font-bold mr-1">
+                    <span className="text-[10px] bg-orange-100 dark:bg-orange-950 text-orange-700 dark:text-orange-300 px-1.5 py-0.2 rounded font-bold mr-1">
                       {dateBadge}
                     </span>
                   )}
@@ -384,7 +384,7 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
                     setParsedDate(e.target.value);
                     setDateBadge(undefined);
                   }}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500 text-slate-900 dark:text-white"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-white"
                   required
                 />
                 {/* Quick Date Pills */}
@@ -417,14 +417,14 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
                   <div className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-rose-500" />
+                    <Clock className="w-3.5 h-3.5 text-orange-500" />
                     <span>שעה (אופציונלי):</span>
                   </div>
                   {parsedTime && (
                     <button
                       type="button"
                       onClick={() => setParsedTime('')}
-                      className="text-[10px] text-slate-400 hover:text-rose-500 underline"
+                      className="text-[10px] text-slate-400 hover:text-orange-500 underline"
                     >
                       נקה שעה
                     </button>
@@ -434,7 +434,7 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
                   type="time"
                   value={parsedTime}
                   onChange={e => setParsedTime(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500 text-slate-900 dark:text-white"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900 dark:text-white"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
                   {parsedTime ? `תיקבע תזכורת אוטומטית לשעה ${parsedTime}` : 'לא הוגדרה שעה ספציפית'}
@@ -469,7 +469,7 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
               <button
                 type="submit"
                 disabled={!parsedTitle.trim()}
-                className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-md shadow-rose-600/20 disabled:opacity-50 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-md shadow-orange-600/20 disabled:opacity-50 transition-all cursor-pointer"
               >
                 <Check className="w-4 h-4 stroke-[2.5]" />
                 <span>הוסף לרשימת Must Do</span>
