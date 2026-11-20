@@ -1,7 +1,6 @@
 import React from 'react';
 import {
-  Sun,
-  Moon,
+  Settings,
   BarChart3,
   CheckSquare,
   Calendar,
@@ -53,7 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
   onDateChange,
   activeView,
   onViewChange,
-  isDark,
+  isDark: _isDark,
   onToggleTheme,
   onOpenAddTask,
   overdueTasksCount,
@@ -192,18 +191,14 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* Display & Font Settings (יום/לילה וסרגל גופן) */}
+            {/* Display & Font Settings (גלגל שיניים) */}
             <button
               onClick={onOpenDisplaySettings || onToggleTheme}
-              className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+              className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer group"
               aria-label="הגדרות תצוגה, מצב יום/לילה וגודל גופן"
               title="הגדרות תצוגה, מצב יום/לילה וגודל גופן"
             >
-              {isDark ? (
-                <Moon className="w-4 h-4 text-indigo-400" />
-              ) : (
-                <Sun className="w-4 h-4 text-amber-500" />
-              )}
+              <Settings className="w-4 h-4 text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white transition-transform group-hover:rotate-45" />
             </button>
           </div>
         </div>
