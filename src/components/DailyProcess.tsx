@@ -173,12 +173,14 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
     }
   };
 
-  const handleScheduleNotebookStage = (newTask: Task) => {
+  const handleScheduleNotebookStage = (newTask: Task | Task[]) => {
+    const tasksToAdd = Array.isArray(newTask) ? newTask : [newTask];
+    if (tasksToAdd.length === 0) return;
     const stored = getStoredTasks();
-    const updated = [newTask, ...stored];
+    const updated = [...tasksToAdd, ...stored];
     saveStoredTasks(updated);
     if (_onTasksSynced) {
-      _onTasksSynced([newTask], []);
+      _onTasksSynced(tasksToAdd, []);
     } else {
       setLocalTasksVersion(v => v + 1);
     }

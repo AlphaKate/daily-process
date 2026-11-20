@@ -15,7 +15,10 @@ import {
   Search,
   FileText,
   AlertCircle,
-  Loader2
+  Loader2,
+  Calendar,
+  CalendarDays,
+  Inbox
 } from 'lucide-react';
 import {
   LearningNotebook,
@@ -36,12 +39,70 @@ import {
 } from '../services/googleDrive';
 import { getStoredToken } from '../services/googleAuth';
 
+export const DAYS_OF_WEEK = [
+  { day: 0, label: 'א׳', name: 'ראשון' },
+  { day: 1, label: 'ב׳', name: 'שני' },
+  { day: 2, label: 'ג׳', name: 'שלישי' },
+  { day: 3, label: 'ד׳', name: 'רביעי' },
+  { day: 4, label: 'ה׳', name: 'חמישי' },
+  { day: 5, label: 'ו׳', name: 'שישי' },
+  { day: 6, label: 'ש׳', name: 'שבת' },
+];
+
+export const PRESETS = [
+  { label: '5 ימים (א׳-ה׳)', days: [0, 1, 2, 3, 4] },
+  { label: '6 ימים (א׳-ו׳)', days: [0, 1, 2, 3, 4, 5] },
+  { label: '7 ימים (כל השבוע)', days: [0, 1, 2, 3, 4, 5, 6] },
+  { label: '3 ימים (א׳, ג׳, ה׳)', days: [0, 2, 4] },
+  { label: '4 ימים (א׳, ב׳, ד׳, ה׳)', days: [0, 1, 3, 4] },
+];
+
+export const calculateDistributedDates = (
+  count: number,
+  startDateStr: string,
+  allowedDaysOfWeek: number[]
+): string[] => {
+  if (count <= 0) return [];
+  const validDays = allowedDaysOfWeek.length > 0 ? allowedDaysOfWeek : [0, 1, 2, 3, 4, 5, 6];
+  const [sy, sm, sd] = startDateStr.split('-').map(Number);
+  const cursor = new Date(sy, sm - 1, sd);
+  const result: string[] = [];
+
+  let safety = 0;
+  while (result.length < count && safety < 365) {
+    safety++;
+    const dayOfWeek = cursor.getDay();
+    if (validDays.includes(dayOfWeek)) {
+      const y = cursor.getFullYear();
+      const m = String(cursor.getMonth() + 1).padStart(2, '0');
+      const d = String(cursor.getDate()).padStart(2, '0');
+      result.push(`${y}-${m}-${d}`);
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return result;
+};
+
+export const formatHebrewDateDisplay = (dateStr: string): string => {
+  if (!dateStr) return '';
+  if (dateStr === 'backlog') return 'בנק היעדים';
+  try {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    const dayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+    const dayName = dayNames[dateObj.getDay()];
+    return `יום ${dayName}, ${d}/${m}`;
+  } catch {
+    return dateStr;
+  }
+};
+
 interface NotebookManagerModalProps {
   isOpen: boolean;
   currentDate: string;
   allTasks: Task[];
   onClose: () => void;
-  onScheduleStage: (task: Task) => void;
+  onScheduleStage: (task: Task | Task[]) => void;
 }
 
 export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
@@ -67,7 +128,17 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
   const [rawPastedContent, setRawPastedContent] = useState('');
   const [decomposedStages, setDecomposedStages] = useState<NotebookStage[]>([]);
   const [hasDecomposed, setHasDecomposed] = useState(false);
-  const [scheduleToWeekImmediately, setScheduleToWeekImmediately] = useState(true);
+  // Distribution Configuration State (Add Form Wizard)
+  const [distributionMode, setDistributionMode] = useState<'spread' | 'backlog' | 'none'>('spread');
+  const [selectedPracticeDays, setSelectedPracticeDays] = useState<number[]>([0, 1, 2, 3, 4]); // Default Sun-Thu
+  const [distributionStartDate, setDistributionStartDate] = useState<string>(currentDate);
+  const [stageScheduleOverrides, setStageScheduleOverrides] = useState<Record<string, string>>({});
+
+  // Bulk Distribution State for Existing Notebook (Tab 2)
+  const [showTab2Distributor, setShowTab2Distributor] = useState(false);
+  const [tab2PracticeDays, setTab2PracticeDays] = useState<number[]>([0, 1, 2, 3, 4]);
+  const [tab2StartDate, setTab2StartDate] = useState<string>(currentDate);
+
   const [isSearchingDrive, setIsSearchingDrive] = useState(false);
   const [decomposeNotice, setDecomposeNotice] = useState<{
     type: 'success' | 'warning' | 'error';
@@ -99,6 +170,13 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
     );
   };
 
+  const getStageScheduledDate = (stageTitle: string): string | null => {
+    const found = allTasks.find(
+      t => !t.isDeleted && t.title.trim().toLowerCase() === stageTitle.trim().toLowerCase()
+    );
+    return found ? found.date : null;
+  };
+
   const isStageCompleted = (stageTitle: string): boolean => {
     return allTasks.some(
       t => !t.isDeleted && t.completed && t.title.trim().toLowerCase() === stageTitle.trim().toLowerCase()
@@ -122,6 +200,60 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
     };
 
     onScheduleStage(newTask);
+  };
+
+  const handleBulkDistributeNotebookStages = (notebook: LearningNotebook, mode: 'spread' | 'backlog') => {
+    if (!notebook.stages || notebook.stages.length === 0) return;
+
+    const incompleteStages = notebook.stages.filter(s => !isStageCompleted(s.title));
+    const targetStages = incompleteStages.length > 0 ? incompleteStages : notebook.stages;
+
+    const now = new Date().toISOString();
+    const newTasks: Task[] = [];
+
+    if (mode === 'spread') {
+      const dates = calculateDistributedDates(
+        targetStages.length,
+        tab2StartDate || currentDate,
+        tab2PracticeDays
+      );
+      targetStages.forEach((stg, idx) => {
+        newTasks.push({
+          id: `nb-auto-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 4)}`,
+          title: stg.title,
+          description: stg.description,
+          category: 'goals',
+          completed: false,
+          date: dates[idx] || currentDate,
+          durationMinutes: stg.durationMinutes || 20,
+          milestoneTitle: notebook.milestoneTitle || notebook.title,
+          link: notebook.url,
+          createdAt: now,
+          updatedAt: now
+        });
+      });
+    } else {
+      targetStages.forEach((stg, idx) => {
+        newTasks.push({
+          id: `nb-auto-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 4)}`,
+          title: stg.title,
+          description: stg.description,
+          category: 'goals',
+          completed: false,
+          date: 'backlog',
+          durationMinutes: stg.durationMinutes || 20,
+          milestoneTitle: notebook.milestoneTitle || notebook.title,
+          link: notebook.url,
+          createdAt: now,
+          updatedAt: now
+        });
+      });
+    }
+
+    if (newTasks.length > 0) {
+      onScheduleStage(newTasks);
+      setShowTab2Distributor(false);
+    }
   };
 
   // 1. Open NotebookLM to pick a notebook
@@ -275,34 +407,75 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
       stages: finalStages
     });
 
-    // If requested, immediately distribute the stages across the week (one per day)
-    if (scheduleToWeekImmediately && finalStages.length > 0) {
-      const [startYear, startMonth, startDay] = currentDate.split('-').map(Number);
+    // Schedule tasks based on user distribution configuration
+    if (finalStages.length > 0) {
       const now = new Date().toISOString();
+      const newTasks: Task[] = [];
 
-      finalStages.forEach((stg, idx) => {
-        const d = new Date(startYear, startMonth - 1, startDay);
-        d.setDate(d.getDate() + idx);
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const dayNum = String(d.getDate()).padStart(2, '0');
+      if (distributionMode === 'spread') {
+        const distributedDates = calculateDistributedDates(
+          finalStages.length,
+          distributionStartDate || currentDate,
+          selectedPracticeDays
+        );
 
-        const task: Task = {
-          id: `nb-auto-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 4)}`,
-          title: stg.title,
-          description: stg.description,
-          category: 'goals',
-          completed: false,
-          date: `${y}-${m}-${dayNum}`,
-          durationMinutes: stg.durationMinutes || 20,
-          milestoneTitle: created.milestoneTitle,
-          link: created.url,
-          createdAt: now,
-          updatedAt: now
-        };
+        finalStages.forEach((stg, idx) => {
+          const assignedDate = stageScheduleOverrides[stg.id] || distributedDates[idx] || currentDate;
+          newTasks.push({
+            id: `nb-auto-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 4)}`,
+            title: stg.title,
+            description: stg.description,
+            category: 'goals',
+            completed: false,
+            date: assignedDate,
+            durationMinutes: stg.durationMinutes || 20,
+            milestoneTitle: created.milestoneTitle,
+            link: created.url,
+            createdAt: now,
+            updatedAt: now
+          });
+        });
+      } else if (distributionMode === 'backlog') {
+        finalStages.forEach((stg, idx) => {
+          const assignedDate = stageScheduleOverrides[stg.id] || 'backlog';
+          newTasks.push({
+            id: `nb-auto-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 4)}`,
+            title: stg.title,
+            description: stg.description,
+            category: 'goals',
+            completed: false,
+            date: assignedDate,
+            durationMinutes: stg.durationMinutes || 20,
+            milestoneTitle: created.milestoneTitle,
+            link: created.url,
+            createdAt: now,
+            updatedAt: now
+          });
+        });
+      } else if (distributionMode === 'none') {
+        finalStages.forEach((stg, idx) => {
+          const assignedDate = stageScheduleOverrides[stg.id];
+          if (assignedDate) {
+            newTasks.push({
+              id: `nb-auto-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 4)}`,
+              title: stg.title,
+              description: stg.description,
+              category: 'goals',
+              completed: false,
+              date: assignedDate,
+              durationMinutes: stg.durationMinutes || 20,
+              milestoneTitle: created.milestoneTitle,
+              link: created.url,
+              createdAt: now,
+              updatedAt: now
+            });
+          }
+        });
+      }
 
-        onScheduleStage(task);
-      });
+      if (newTasks.length > 0) {
+        onScheduleStage(newTasks);
+      }
     }
 
     refreshNotebooks();
@@ -318,6 +491,10 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
     setRawPastedContent('');
     setDecomposedStages([]);
     setHasDecomposed(false);
+    setDistributionMode('spread');
+    setSelectedPracticeDays([0, 1, 2, 3, 4]);
+    setDistributionStartDate(currentDate);
+    setStageScheduleOverrides({});
   };
 
   // Add stage to existing notebook
@@ -637,10 +814,126 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                 </div>
               </div>
 
+              {/* Quick Bulk Distribution Toolbar for Existing Notebook */}
+              <div className="p-3 bg-gradient-to-r from-purple-50/70 to-indigo-50/70 dark:from-purple-950/40 dark:to-indigo-950/40 rounded-2xl border border-purple-200/80 dark:border-purple-800/50 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
+                    <CalendarDays className="w-4 h-4 text-purple-600" />
+                    <span>פיזור ושיבוץ מהיר של שלבי המחברת:</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowTab2Distributor(prev => !prev)}
+                      className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                    >
+                      <CalendarDays className="w-3.5 h-3.5" />
+                      <span>{showTab2Distributor ? 'סגור הגדרות פיזור' : 'פזר לאורך השבוע 📅'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleBulkDistributeNotebookStages(selectedNotebook, 'backlog')}
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <Inbox className="w-3.5 h-3.5 text-purple-600" />
+                      <span>העבר הכל לבנק היעדים 📥</span>
+                    </button>
+                  </div>
+                </div>
+
+                {showTab2Distributor && (
+                  <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-purple-200 dark:border-purple-800 space-y-2.5 animate-in fade-in duration-150 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-bold text-slate-700 dark:text-slate-300">
+                        כמה ימים בשבוע מתוכנן התרגול?
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[11px] text-slate-400">החל מתאריך:</span>
+                        <input
+                          type="date"
+                          value={tab2StartDate}
+                          onChange={(e) => setTab2StartDate(e.target.value)}
+                          className="px-2 py-1 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 font-semibold focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Preset pills */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {PRESETS.map((p) => {
+                        const isSelected =
+                          tab2PracticeDays.length === p.days.length &&
+                          p.days.every(d => tab2PracticeDays.includes(d));
+                        return (
+                          <button
+                            key={p.label}
+                            type="button"
+                            onClick={() => setTab2PracticeDays(p.days)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-200 border-purple-300 dark:border-purple-700 font-bold'
+                                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                            }`}
+                          >
+                            {p.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Day toggles */}
+                    <div className="flex items-center gap-1 pt-1">
+                      <span className="text-[11px] text-slate-400 shrink-0 ml-1">ימי השבוע:</span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {DAYS_OF_WEEK.map(({ day, label, name }) => {
+                          const active = tab2PracticeDays.includes(day);
+                          return (
+                            <button
+                              key={day}
+                              type="button"
+                              onClick={() => {
+                                if (active) {
+                                  if (tab2PracticeDays.length > 1) {
+                                    setTab2PracticeDays(tab2PracticeDays.filter(d => d !== day));
+                                  }
+                                } else {
+                                  setTab2PracticeDays([...tab2PracticeDays, day].sort());
+                                }
+                              }}
+                              className={`w-7 h-7 rounded-xl text-xs font-bold flex items-center justify-center transition-all cursor-pointer ${
+                                active
+                                  ? 'bg-purple-600 text-white shadow-xs'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200'
+                              }`}
+                              title={`יום ${name}`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <span className="text-[11px] text-purple-600 dark:text-purple-400 font-bold mr-2">
+                        ({tab2PracticeDays.length} ימים בשבוע)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleBulkDistributeNotebookStages(selectedNotebook, 'spread')}
+                        className="mr-auto px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+                      >
+                        החל פיזור כעת 🚀
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Stages List */}
               <div className="space-y-2.5">
                 {selectedNotebook.stages.map((stage, idx) => {
                   const isScheduledToday = isStageScheduledForDate(stage.title, currentDate);
+                  const scheduledDate = getStageScheduledDate(stage.title);
                   const isDone = isStageCompleted(stage.title);
                   const isEditingThis = editingStageId === stage.id;
 
@@ -714,9 +1007,19 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                                     ⏱️ {stage.durationMinutes} דק׳
                                   </span>
                                 )}
+                                {scheduledDate === 'backlog' && (
+                                  <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700">
+                                    בבנק היעדים ✓
+                                  </span>
+                                )}
                                 {isScheduledToday && (
                                   <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800">
                                     מתוכנן להיום ✓
+                                  </span>
+                                )}
+                                {scheduledDate && scheduledDate !== currentDate && scheduledDate !== 'backlog' && (
+                                  <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800">
+                                    משובץ ל-{formatHebrewDateDisplay(scheduledDate)} ✓
                                   </span>
                                 )}
                                 {isDone && (
@@ -734,7 +1037,7 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                           </div>
 
                           {/* Scheduling & Edit Buttons */}
-                          <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                             <button
                               type="button"
                               onClick={() => handleScheduleStage(selectedNotebook, stage, currentDate)}
@@ -748,11 +1051,32 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                             <button
                               type="button"
                               onClick={() => handleScheduleStage(selectedNotebook, stage, 'backlog')}
-                              className="px-2 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+                              className={`px-2 py-1 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                                scheduledDate === 'backlog'
+                                  ? 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-300'
+                                  : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300'
+                              }`}
                               title="שמור בבנק היעדים"
                             >
                               <span>לבנק</span>
                             </button>
+
+                            <label
+                              className="relative px-2 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                              title="שבץ שלב זה ליום ספציפי"
+                            >
+                              <Calendar className="w-3 h-3 text-purple-600" />
+                              <span>ליום...</span>
+                              <input
+                                type="date"
+                                className="absolute inset-0 opacity-0 cursor-pointer"
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    handleScheduleStage(selectedNotebook, stage, e.target.value);
+                                  }
+                                }}
+                              />
+                            </label>
 
                             <button
                               type="button"
@@ -1017,54 +1341,258 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                   </div>
                 )}
 
-                {/* Decomposed sub-tasks preview */}
-                {hasDecomposed && decomposedStages.length > 0 && (
-                  <div className="p-3.5 bg-white dark:bg-slate-850 rounded-2xl border-2 border-emerald-400 dark:border-emerald-600 space-y-2.5 animate-in fade-in duration-200">
-                    <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-700">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
-                        <Check className="w-4 h-4 text-emerald-600" />
-                        <span>חולצו בהצלחה {decomposedStages.length} תתי-משימות לתוכנית:</span>
-                      </div>
-                      <span className="text-[11px] text-slate-400">
-                        ⏱️ סה״כ: {decomposedStages.reduce((sum, s) => sum + (s.durationMinutes || 0), 0)} דקות
-                      </span>
-                    </div>
+                {/* Decomposed sub-tasks preview & Distribution controls */}
+                {hasDecomposed && decomposedStages.length > 0 && (() => {
+                  const distributedDates = calculateDistributedDates(
+                    decomposedStages.length,
+                    distributionStartDate || currentDate,
+                    selectedPracticeDays
+                  );
 
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                      {decomposedStages.map((stg, i) => (
-                        <div
-                          key={stg.id || i}
-                          className="p-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs"
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold flex items-center justify-center shrink-0">
-                              {i + 1}
-                            </span>
-                            <span className="font-semibold text-slate-800 dark:text-slate-100 truncate">
-                              {stg.title}
-                            </span>
-                          </div>
-                          <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold shrink-0">
-                            {stg.durationMinutes} דק׳
+                  return (
+                    <div className="p-3.5 bg-white dark:bg-slate-850 rounded-2xl border-2 border-emerald-400 dark:border-emerald-600 space-y-3.5 animate-in fade-in duration-200">
+                      {/* Header */}
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-700">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                          <Check className="w-4 h-4 text-emerald-600" />
+                          <span>חולצו בהצלחה {decomposedStages.length} תתי-משימות אמיתיות לתוכנית:</span>
+                        </div>
+                        <span className="text-[11px] text-slate-400">
+                          ⏱️ סה״כ: {decomposedStages.reduce((sum, s) => sum + (s.durationMinutes || 0), 0)} דקות
+                        </span>
+                      </div>
+
+                      {/* Distribution Configuration Box */}
+                      <div className="p-3 bg-gradient-to-r from-purple-50/80 to-indigo-50/80 dark:from-purple-950/40 dark:to-indigo-950/40 rounded-xl border border-purple-200/80 dark:border-purple-800/60 space-y-3 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                            <CalendarDays className="w-4 h-4 text-purple-600" />
+                            <span>אופן פיזור ושיבוץ המשימות:</span>
                           </span>
                         </div>
-                      ))}
-                    </div>
 
-                    {/* Schedule distribution option */}
-                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                      <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={scheduleToWeekImmediately}
-                          onChange={(e) => setScheduleToWeekImmediately(e.target.checked)}
-                          className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500"
-                        />
-                        <span>פזר תתי-משימות אלו לאורך השבוע (משימה בכל יום החל מהיום) 📅</span>
-                      </label>
+                        {/* Mode Select Buttons */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setDistributionMode('spread')}
+                            className={`p-2 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 text-center transition-all cursor-pointer ${
+                              distributionMode === 'spread'
+                                ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-purple-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1">
+                              <CalendarDays className="w-3.5 h-3.5" />
+                              <span>פיזור לאורך השבוע</span>
+                            </div>
+                            <span className={`text-[10px] font-normal ${distributionMode === 'spread' ? 'text-purple-100' : 'text-slate-400'}`}>
+                              לפי ימי תרגול מוגדרים
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setDistributionMode('backlog')}
+                            className={`p-2 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 text-center transition-all cursor-pointer ${
+                              distributionMode === 'backlog'
+                                ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-purple-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1">
+                              <Inbox className="w-3.5 h-3.5" />
+                              <span>לבנק היעדים (Backlog)</span>
+                            </div>
+                            <span className={`text-[10px] font-normal ${distributionMode === 'backlog' ? 'text-purple-100' : 'text-slate-400'}`}>
+                              כל המשימות ישמרו בבנק
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setDistributionMode('none')}
+                            className={`p-2 rounded-xl border text-xs font-bold flex flex-col items-center gap-1 text-center transition-all cursor-pointer ${
+                              distributionMode === 'none'
+                                ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                                : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-purple-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1">
+                              <Layers className="w-3.5 h-3.5" />
+                              <span>ללא שיבוץ כעת</span>
+                            </div>
+                            <span className={`text-[10px] font-normal ${distributionMode === 'none' ? 'text-purple-100' : 'text-slate-400'}`}>
+                              שמירה במחברת בלבד
+                            </span>
+                          </button>
+                        </div>
+
+                        {/* When 'spread' is active: configuration for days per week */}
+                        {distributionMode === 'spread' && (
+                          <div className="p-3 bg-white/90 dark:bg-slate-900/90 rounded-xl border border-purple-200 dark:border-purple-800/70 space-y-2.5 animate-in fade-in duration-150">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="font-bold text-slate-700 dark:text-slate-300">
+                                כמה ימים בשבוע מתוכנן התרגול?
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <span className="text-[11px] text-slate-400">החל מתאריך:</span>
+                                <input
+                                  type="date"
+                                  value={distributionStartDate}
+                                  onChange={(e) => setDistributionStartDate(e.target.value)}
+                                  className="px-2 py-1 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 font-semibold focus:outline-none"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Preset pills */}
+                            <div className="flex flex-wrap gap-1.5">
+                              {PRESETS.map((p) => {
+                                const isSelected =
+                                  selectedPracticeDays.length === p.days.length &&
+                                  p.days.every(d => selectedPracticeDays.includes(d));
+                                return (
+                                  <button
+                                    key={p.label}
+                                    type="button"
+                                    onClick={() => setSelectedPracticeDays(p.days)}
+                                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
+                                      isSelected
+                                        ? 'bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-200 border-purple-300 dark:border-purple-700 font-bold'
+                                        : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                                    }`}
+                                  >
+                                    {p.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* Day toggles */}
+                            <div className="flex items-center gap-1 pt-1 flex-wrap">
+                              <span className="text-[11px] text-slate-400 shrink-0 ml-1">ימי השבוע:</span>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {DAYS_OF_WEEK.map(({ day, label, name }) => {
+                                  const active = selectedPracticeDays.includes(day);
+                                  return (
+                                    <button
+                                      key={day}
+                                      type="button"
+                                      onClick={() => {
+                                        if (active) {
+                                          if (selectedPracticeDays.length > 1) {
+                                            setSelectedPracticeDays(selectedPracticeDays.filter(d => d !== day));
+                                          }
+                                        } else {
+                                          setSelectedPracticeDays([...selectedPracticeDays, day].sort());
+                                        }
+                                      }}
+                                      className={`w-7 h-7 rounded-xl text-xs font-bold flex items-center justify-center transition-all cursor-pointer ${
+                                        active
+                                          ? 'bg-purple-600 text-white shadow-xs'
+                                          : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200'
+                                      }`}
+                                      title={`יום ${name}`}
+                                    >
+                                      {label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <span className="text-[11px] text-purple-600 dark:text-purple-400 font-bold mr-auto">
+                                ({selectedPracticeDays.length} ימים בשבוע)
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Stages preview list with destination date & per-stage actions */}
+                      <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                        {decomposedStages.map((stg, i) => {
+                          const override = stageScheduleOverrides[stg.id];
+                          const targetDate = override || (distributionMode === 'spread' ? distributedDates[i] : distributionMode === 'backlog' ? 'backlog' : null);
+
+                          return (
+                            <div
+                              key={stg.id || i}
+                              className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 text-xs"
+                            >
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold flex items-center justify-center shrink-0">
+                                  {i + 1}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <span className="font-semibold text-slate-800 dark:text-slate-100 block truncate">
+                                    {stg.title}
+                                  </span>
+                                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">
+                                    ⏱️ {stg.durationMinutes} דק׳
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Planned Date / Status Badge & Quick Actions */}
+                              <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                                {targetDate ? (
+                                  <span
+                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
+                                      targetDate === 'backlog'
+                                        ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-300'
+                                        : 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border-purple-300'
+                                    }`}
+                                  >
+                                    {targetDate === 'backlog' ? '📥 בנק היעדים' : `📅 ${formatHebrewDateDisplay(targetDate)}`}
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] text-slate-400 px-1.5 py-0.5 rounded border border-dashed border-slate-300">
+                                    ללא שיבוץ
+                                  </span>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => setStageScheduleOverrides(prev => ({ ...prev, [stg.id]: 'backlog' }))}
+                                  className="px-2 py-0.8 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 text-slate-600 dark:text-slate-300 text-[10px] font-semibold cursor-pointer"
+                                  title="שים שלב זה בבנק היעדים"
+                                >
+                                  לבנק
+                                </button>
+
+                                <label
+                                  className="relative px-2 py-0.8 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 text-slate-600 dark:text-slate-300 text-[10px] font-semibold flex items-center gap-0.5 cursor-pointer"
+                                  title="שבץ שלב זה ליום ספציפי"
+                                >
+                                  <Calendar className="w-2.5 h-2.5 text-purple-600" />
+                                  <span>ליום...</span>
+                                  <input
+                                    type="date"
+                                    className="absolute inset-0 opacity-0 cursor-pointer"
+                                    onChange={(e) => {
+                                      if (e.target.value) {
+                                        setStageScheduleOverrides(prev => ({ ...prev, [stg.id]: e.target.value }));
+                                      }
+                                    }}
+                                  />
+                                </label>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setStageScheduleOverrides(prev => ({ ...prev, [stg.id]: currentDate }))}
+                                  className="px-2 py-0.8 rounded-lg bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 hover:bg-purple-100 text-[10px] font-semibold cursor-pointer"
+                                  title="שבץ שלב זה להיום"
+                                >
+                                  להיום
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
 
               {/* Submit / Finish */}
