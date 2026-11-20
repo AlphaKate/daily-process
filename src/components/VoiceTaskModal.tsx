@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { parseVoiceTask, formatDate } from '../services/voiceTaskParser';
 import { getTodayDateString } from '../services/storage';
+import { scanTextForSensitiveData, DLPFinding } from '../services/dlpService';
+import { DLPWarningModal } from './DLPWarningModal';
 
 interface VoiceTaskModalProps {
   isOpen: boolean;
@@ -48,6 +50,8 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
   const [parsedDate, setParsedDate] = useState(currentDate || getTodayDateString());
   const [parsedTime, setParsedTime] = useState<string>('');
   const [dateBadge, setDateBadge] = useState<string | undefined>();
+  const [dlpFindings, setDlpFindings] = useState<DLPFinding[]>([]);
+  const [isDlpModalOpen, setIsDlpModalOpen] = useState<boolean>(false);
 
   const recognitionRef = useRef<any>(null);
 
@@ -192,13 +196,7 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
     setParsedTitle(text);
   };
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!parsedTitle.trim()) {
-      setErrorMsg('נא לציין או להקליט את שם המשימה');
-      return;
-    }
-
+  const performAddVoiceTask = () => {
     stopListening();
     onAddTask({
       title: parsedTitle.trim(),
@@ -207,6 +205,25 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
       category: 'must_do'
     });
     onClose();
+  };
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!parsedTitle.trim()) {
+      setErrorMsg('נא לציין או להקליט את שם המשימה');
+      return;
+    }
+
+    // Scan for sensitive data (ID, Credit Card, Bank)
+    const scanResult = scanTextForSensitiveData(parsedTitle);
+    if (scanResult.hasSensitiveData) {
+      stopListening();
+      setDlpFindings(scanResult.findings);
+      setIsDlpModalOpen(true);
+      return;
+    }
+
+    performAddVoiceTask();
   };
 
   // Quick date helper buttons
@@ -461,6 +478,17 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* DLP Warning Modal */}
+      <DLPWarningModal
+        isOpen={isDlpModalOpen}
+        findings={dlpFindings}
+        onClose={() => setIsDlpModalOpen(false)}
+        onConfirmSaveAnyway={() => {
+          setIsDlpModalOpen(false);
+          performAddVoiceTask();
+        }}
+      />
     </div>
   );
 };

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Task, TaskCategory } from '../types';
 import { X, Link as LinkIcon, Milestone, AlertCircle, FileText, Clock } from 'lucide-react';
+import { scanTextForSensitiveData, DLPFinding } from '../services/dlpService';
+import { DLPWarningModal } from './DLPWarningModal';
 
 interface TaskModalProps {
   isOpen: boolean;
@@ -39,6 +41,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [milestoneTitle, setMilestoneTitle] = useState('');
   const [link, setLink] = useState('');
   const [error, setError] = useState('');
+  const [dlpFindings, setDlpFindings] = useState<DLPFinding[]>([]);
+  const [isDlpModalOpen, setIsDlpModalOpen] = useState(false);
 
   useEffect(() => {
     if (initialTask) {
@@ -79,13 +83,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       ? `https://docs.google.com/document/d/${existingDocId}/edit`
       : null;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim()) {
-      setError('נא להזין כותרת למשימה');
-      return;
-    }
-
+  const performSave = () => {
     let resolvedGoalDocId = initialTask?.goalDocumentId;
     if (link) {
       const match = link.match(/\/document\/d\/([a-zA-Z0-9-_]+)/);
@@ -106,6 +104,24 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       goalDocumentId: resolvedGoalDocId,
     });
     onClose();
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) {
+      setError('נא להזין כותרת למשימה');
+      return;
+    }
+
+    // Scan for sensitive data (ID, Credit Card, Bank)
+    const scanResult = scanTextForSensitiveData(`${title} ${description}`);
+    if (scanResult.hasSensitiveData) {
+      setDlpFindings(scanResult.findings);
+      setIsDlpModalOpen(true);
+      return;
+    }
+
+    performSave();
   };
 
   return (
@@ -396,6 +412,17 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* DLP Sensitive Data Soft Warning Modal */}
+      <DLPWarningModal
+        isOpen={isDlpModalOpen}
+        findings={dlpFindings}
+        onClose={() => setIsDlpModalOpen(false)}
+        onConfirmSaveAnyway={() => {
+          setIsDlpModalOpen(false);
+          performSave();
+        }}
+      />
     </div>
   );
 };
