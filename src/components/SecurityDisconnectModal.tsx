@@ -120,6 +120,13 @@ export const SecurityDisconnectModal: React.FC<SecurityDisconnectModalProps> = (
                 AES-256-GCM (Web Crypto) פעיל
               </span>
             </div>
+            <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-700/60 text-[11px]">
+              <span className="text-slate-500 dark:text-slate-400">הגנת סייבר ורשת (CSP & Anti-XSS):</span>
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                פעיל (מדיניות CSP וסניטציה מלאה)
+              </span>
+            </div>
           </div>
 
           {!confirmWipeStep ? (

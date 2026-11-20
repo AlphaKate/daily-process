@@ -204,7 +204,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               type="button"
               onClick={onOpenVoiceTask}
-              className="h-11 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-rose-500 via-rose-600 to-pink-600 hover:from-rose-600 hover:to-pink-700 active:scale-[0.98] text-white font-bold text-xs sm:text-sm rounded-2xl shadow-md shadow-rose-500/20 transition-all cursor-pointer group"
+              className="h-11 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 active:scale-[0.98] text-white font-bold text-xs sm:text-sm rounded-2xl shadow-md shadow-orange-500/25 transition-all cursor-pointer group"
               title="הקלטת משימה קולית ל-Must Do (דיבור טבעי עם תאריך ושעה)"
             >
               <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">

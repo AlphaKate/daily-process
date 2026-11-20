@@ -18,6 +18,7 @@ import {
   Brain
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { sanitizeUrl } from '../services/securitySanitizer';
 
 interface TaskItemProps {
   task: Task;
@@ -414,10 +415,10 @@ export const TaskItem: React.FC<TaskItemProps> = ({
               )}
 
               {/* Google Meet / Video Conference Quick Action Button */}
-              {meetingInfo && (
+              {meetingInfo && sanitizeUrl(meetingInfo.url) && (
                 <div>
                   <a
-                    href={meetingInfo.url}
+                    href={sanitizeUrl(meetingInfo.url) || '#'}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
@@ -454,9 +455,9 @@ export const TaskItem: React.FC<TaskItemProps> = ({
                   )}
 
                   {/* Direct Link to Google Doc, NotebookLM or External Link */}
-                  {shouldShowDocUrl && (
+                  {shouldShowDocUrl && sanitizeUrl(docUrl) && (
                     <a
-                      href={docUrl}
+                      href={sanitizeUrl(docUrl) || '#'}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}

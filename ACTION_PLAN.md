@@ -121,7 +121,7 @@
 
 ## תוכנית הפעולה להמשך (Next Steps Roadmap)
 
-### שלב 10: חבילת אבטחה, סייבר ופרטיות (Security, Cyber & Privacy Suite) 🛡️
+### שלב 10: חבילת אבטחה, סייבר ופרטיות (Security, Cyber & Privacy Suite) (הושלם במלואו ונבדק באוויר ✅) 🛡️
 *(תוכנית מפורטת מלאה מופיעה במסמך הייעודי: [SECURITY_PLAN.md](file:///C:/Katy/GeminiCoding/MyDailyGoalListProc/SECURITY_PLAN.md))*
 1. **צעד 1 – ניתוק מכל המקורות ומחיקת חירום (Emergency Wipe & OAuth Revocation) (הושלם ונבדק בהצלחה ✅):**
    - כפתור ניתוק מלא המבצע Revoke רשמי מול שרתי Google (`revokeGoogleAccess`), מתנתק מכל המקורות (Drive, Calendar, Docs, Microsoft).
@@ -140,8 +140,11 @@
    - כל משימה או יעד הנשמרים ב-`localStorage` מוצפנים במעטפת קריפטוגרפית (`{"enc":"aes-256-gcm","iv":"...","ct":"..."}`).
    - פענוח אוטומטי שקוף למשתמשת בעת טעינת האפליקציה ללא צורך בהקשת סיסמה בכל פתיחה.
    - תמיכה ב-Crypto-Shredding: מחיקת חירום מוחקת את מפתח ההצפנה והופכת את השרידים לבלתי-קריאים לחלוטין.
-5. **צעד 5 – הקשחת סייבר ורשת (CSP & Production Hardening):**
-   - תגיות CSP קשיחות ב-`index.html`, מניעת XSS ו-Clickjacking, וניקוי לוגים רגישים בייצור.
+5. **צעד 5 – הקשחת סייבר ורשת (CSP & Production Hardening) (הושלם ונבדק בהצלחה ✅):**
+   - תגיות CSP קשיחות ב-`index.html`: מניעת XSS, הגבלת טעינת סקריפטים וחיבורים ל-Google APIs בלבד.
+   - הגנת Clickjacking: תגית `X-Frame-Options` ומנגנון Frame Buster ב-`main.tsx` למניעת הטמעה ב-iFrames זרים.
+   - סניטציה קפדנית של קישורים חיצוניים (`sanitizeUrl` ב-`securitySanitizer`) לחסימת פרוטוקולים מסוכנים כגון `javascript:`.
+   - הסרת לוגים רגישים בייצור: הגדרת `esbuild: drop: ['console', 'debugger']` ב-`vite.config.ts` כך ששום שם משימה, פגישה או טוקן לא מודפס לקונסול בדפדפן ב-Production.
 6. **הרחבה עתידית – מעבר למאגר פרטי (Private Repo & Cloudflare/Vercel Hosting):**
    - אפשרות העברת המאגר ל-Private ב-GitHub ואירוח בחינם דרך Cloudflare Pages או Vercel לשמירה על סודיות קוד המקור.
 
