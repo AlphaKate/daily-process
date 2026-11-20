@@ -46,7 +46,7 @@ export interface CalendarSyncResult {
 }
 
 /**
- * Calculates start and end of day using local date boundaries to avoid UTC offset bugs (e.g. UTC+2/UTC+3 in Israel).
+ * Calculates start and end boundaries for a given date in local time
  */
 export const getLocalDateBounds = (dateStr: string): { timeMin: string; timeMax: string } => {
   const parts = dateStr.split('-').map(Number);
@@ -60,7 +60,6 @@ export const getLocalDateBounds = (dateStr: string): { timeMin: string; timeMax:
     };
   }
 
-  // Fallback if date string isn't standard YYYY-MM-DD
   const fallback = new Date(dateStr);
   const startOfDay = new Date(fallback.getFullYear(), fallback.getMonth(), fallback.getDate(), 0, 0, 0, 0);
   const endOfDay = new Date(fallback.getFullYear(), fallback.getMonth(), fallback.getDate(), 23, 59, 59, 999);
@@ -72,10 +71,6 @@ export const getLocalDateBounds = (dateStr: string): { timeMin: string; timeMax:
 
 /**
  * Extracts video conferencing link (Google Meet, Zoom, Microsoft Teams, Webex)
- * Priority:
- * 1. event.hangoutLink
- * 2. event.conferenceData.entryPoints (video type or meet/zoom/teams URL)
- * 3. Links found in event.location or event.description
  */
 export const extractMeetingLink = (event: CalendarEvent): string | undefined => {
   // 1. Direct hangoutLink from Google Meet
@@ -119,7 +114,6 @@ export const extractMeetingLink = (event: CalendarEvent): string | undefined => 
     for (const regex of meetingRegexes) {
       const match = text.match(regex);
       if (match && match[0]) {
-        // Strip trailing punctuation (e.g. '.', ',', ';', ')')
         return match[0].replace(/[.,;:)]+$/, '').trim();
       }
     }
@@ -162,11 +156,47 @@ export const buildTaskDescription = (event: CalendarEvent, meetingLink?: string)
   return sections.join('\n\n');
 };
 
-export const fetchCalendarEventsForDate = async (
-  dateStr: string, // YYYY-MM-DD
-  accessToken: string
-): Promise<CalendarEvent[]> => {
-  const { timeMin, timeMax } = getLocalDateBounds(dateStr);
+/**
+ * Format a Date object to YYYY-MM-DD in local time
+ */
+const formatLocalYMD = (d: Date): string => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Extract exact local date YYYY-MM-DD from CalendarEvent
+ */
+export const getEventLocalDateString = (event: CalendarEvent): string => {
+  if (event.start?.dateTime) {
+    const d = new Date(event.start.dateTime);
+    if (!isNaN(d.getTime())) {
+      return formatLocalYMD(d);
+    }
+  }
+  if (event.start?.date) {
+    return event.start.date.substring(0, 10);
+  }
+  return formatLocalYMD(new Date());
+};
+
+/**
+ * Fetch calendar events across a rolling time window (e.g. past 7 days to next 30 days)
+ * to ensure all moved, updated, and new events are caught in a single sync operation.
+ */
+export const fetchCalendarEventsWindow = async (
+  accessToken: string,
+  daysBack: number = 7,
+  daysForward: number = 30
+): Promise<{ events: CalendarEvent[]; windowStart: string; windowEnd: string }> => {
+  const now = new Date();
+  const startWindow = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysBack, 0, 0, 0, 0);
+  const endWindow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysForward, 23, 59, 59, 999);
+
+  const timeMin = startWindow.toISOString();
+  const timeMax = endWindow.toISOString();
 
   const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(
     timeMin
@@ -186,33 +216,55 @@ export const fetchCalendarEventsForDate = async (
   }
 
   const data = await response.json();
-  return data.items || [];
+  return {
+    events: data.items || [],
+    windowStart: formatLocalYMD(startWindow),
+    windowEnd: formatLocalYMD(endWindow)
+  };
 };
 
+/**
+ * Synchronize Google Calendar events with application tasks:
+ * - Automatically moves tasks if their date or time changed in Google Calendar (e.g. from tomorrow to today).
+ * - Updates titles, descriptions, and meeting links.
+ * - Adds new meetings to Must Do.
+ * - Soft-deletes tasks if the event was cancelled or removed from Google Calendar.
+ */
 export const syncCalendarEventsToTasks = async (
-  dateStr: string,
+  _currentDate: string,
   accessToken: string,
   existingTasks: Task[]
 ): Promise<CalendarSyncResult> => {
-  const events = await fetchCalendarEventsForDate(dateStr, accessToken);
+  // Fetch a rolling window from 7 days ago to 30 days ahead
+  const { events, windowStart, windowEnd } = await fetchCalendarEventsWindow(accessToken, 7, 30);
   const now = new Date().toISOString();
   const newTasks: Task[] = [];
   const updatedTasks: Task[] = [];
 
+  // Track event IDs that are active in Google Calendar
+  const activeEventIds = new Set<string>();
+
   for (const event of events) {
-    // Skip cancelled events
+    const eventTaskId = `gcal-${event.id}`;
+    const eventDateStr = getEventLocalDateString(event);
+    const title = event.summary?.trim() || 'פגישה ללא כותרת';
+
+    // If event is cancelled in Google Calendar, mark existing task as deleted
     if (event.status === 'cancelled') {
+      const existingTask = existingTasks.find(t => t.id === eventTaskId);
+      if (existingTask && !existingTask.isDeleted) {
+        updatedTasks.push({
+          ...existingTask,
+          isDeleted: true,
+          updatedAt: now
+        });
+      }
       continue;
     }
 
-    const eventTaskId = `gcal-${event.id}`;
-    const existing = existingTasks.find(
-      t =>
-        t.id === eventTaskId ||
-        (t.title === (event.summary || 'פגישה ללא כותרת') && t.date === dateStr && t.category === 'must_do')
-    );
+    activeEventIds.add(eventTaskId);
 
-    // Parse start and duration
+    // Parse time and duration
     let timeStr: string | undefined = undefined;
     let duration: number | undefined = undefined;
 
@@ -232,50 +284,71 @@ export const syncCalendarEventsToTasks = async (
       }
     }
 
-    const title = event.summary?.trim() || 'פגישה ללא כותרת';
     const meetingLink = extractMeetingLink(event);
     const taskLink = meetingLink || event.htmlLink || undefined;
     const description = buildTaskDescription(event, meetingLink);
 
+    // Find if task already exists (by ID, or by identical title and category)
+    const existing = existingTasks.find(t => t.id === eventTaskId);
+
     if (existing) {
-      // 1. If soft-deleted, do NOT resurrect it
+      // If user soft-deleted it in app, honor deletion
       if (existing.isDeleted) {
         continue;
       }
 
-      // 2. If not completed, update if start time, duration, title, meeting link, or description changed
-      if (!existing.completed) {
-        const titleChanged = existing.title !== title;
-        const timeChanged = (existing.time || undefined) !== (timeStr || undefined);
-        const durationChanged = (existing.durationMinutes || undefined) !== (duration || undefined);
-        const linkChanged = (existing.link || undefined) !== (taskLink || undefined);
-        const descChanged = existing.description !== description;
+      // Check if DATE changed (e.g. moved from tomorrow to today!)
+      const dateChanged = existing.date !== eventDateStr;
+      const timeChanged = (existing.time || undefined) !== (timeStr || undefined);
+      const titleChanged = existing.title !== title;
+      const durationChanged = (existing.durationMinutes || undefined) !== (duration || undefined);
+      const linkChanged = (existing.link || undefined) !== (taskLink || undefined);
+      const descChanged = existing.description !== description;
 
-        if (titleChanged || timeChanged || durationChanged || linkChanged || descChanged) {
-          updatedTasks.push({
-            ...existing,
-            title,
-            time: timeStr,
-            durationMinutes: duration,
-            link: taskLink,
-            description,
-            updatedAt: now
-          });
-        }
+      if (dateChanged || timeChanged || titleChanged || durationChanged || linkChanged || descChanged) {
+        updatedTasks.push({
+          ...existing,
+          date: eventDateStr, // <--- CRITICAL FIX: Updates date to the event's current date!
+          time: timeStr,
+          title,
+          durationMinutes: duration,
+          link: taskLink,
+          description,
+          updatedAt: now
+        });
       }
     } else {
-      // 3. New event
+      // New calendar event -> add to Must Do
       newTasks.push({
         id: eventTaskId,
         title,
         description,
         category: 'must_do',
         completed: false,
-        date: dateStr,
+        date: eventDateStr,
         time: timeStr,
         durationMinutes: duration,
         link: taskLink,
         createdAt: now,
+        updatedAt: now
+      });
+    }
+  }
+
+  // Check for any calendar tasks that were deleted from Google Calendar
+  // (within the scanned windowStart .. windowEnd)
+  for (const t of existingTasks) {
+    if (
+      t.id.startsWith('gcal-') &&
+      !t.isDeleted &&
+      t.date >= windowStart &&
+      t.date <= windowEnd &&
+      !activeEventIds.has(t.id)
+    ) {
+      // Event no longer exists in Google Calendar -> soft delete it
+      updatedTasks.push({
+        ...t,
+        isDeleted: true,
         updatedAt: now
       });
     }

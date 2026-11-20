@@ -113,6 +113,7 @@ export const App: React.FC = () => {
 
     setIsSyncing(true);
     let calendarCount = 0;
+    let calendarUpdatesCount = 0;
     let driveCount = 0;
     const currentTasks = getStoredTasks();
     let mergedTasks = [...currentTasks];
@@ -153,7 +154,7 @@ export const App: React.FC = () => {
         console.warn('Drive tasks file load warning', driveFileErr);
       }
 
-      // 2. Sync Google Calendar -> Must Do
+      // 2. Sync Google Calendar -> Must Do (syncs rolling multi-week window for all updates, moves & deletions)
       try {
         const calResult = await syncCalendarEventsToTasks(
           currentDate,
@@ -161,6 +162,7 @@ export const App: React.FC = () => {
           mergedTasks
         );
         calendarCount = calResult.newTasks.length;
+        calendarUpdatesCount = calResult.updatedTasks ? calResult.updatedTasks.length : 0;
         if (calResult.updatedTasks && calResult.updatedTasks.length > 0) {
           const updatedMap = new Map(calResult.updatedTasks.map(t => [t.id, t]));
           mergedTasks = mergedTasks.map(t => updatedMap.get(t.id) || t);
@@ -206,7 +208,8 @@ export const App: React.FC = () => {
 
       if (!silent) {
         const msgParts = [];
-        if (calendarCount > 0) msgParts.push(`${calendarCount} פגישות מיומן Google`);
+        if (calendarCount > 0) msgParts.push(`${calendarCount} פגישות חדשות מיומן Google`);
+        if (calendarUpdatesCount > 0) msgParts.push(`${calendarUpdatesCount} פגישות שעודכנו/הוזזו מיומן Google`);
         if (driveCount > 0) msgParts.push(`${driveCount} יעדים מ-Drive`);
         if (superCount > 0) msgParts.push(`רשימת סופר (${superCount} פריטים)`);
         
@@ -321,6 +324,17 @@ export const App: React.FC = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleVisibilityChange);
     };
+  }, [syncGoogleServices]);
+
+  // Continuous background sync: Poll for Google Calendar updates every 60 seconds
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const stored = getStoredToken();
+      if (stored?.access_token) {
+        syncGoogleServices(stored.access_token, true);
+      }
+    }, 60000);
+    return () => clearInterval(timer);
   }, [syncGoogleServices]);
 
   const handleToggleTheme = () => {

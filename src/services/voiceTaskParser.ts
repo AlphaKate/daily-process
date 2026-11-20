@@ -46,7 +46,7 @@ const HEBREW_DAYS_MAP: Record<string, number> = {
 };
 
 /**
- * Format a Date to YYYY-MM-DD
+ * Format a Date object to YYYY-MM-DD in local time
  */
 export function formatDate(d: Date): string {
   const year = d.getFullYear();
@@ -63,94 +63,116 @@ function getNextDayOfWeek(targetDay: number, baseDate: Date): Date {
   const currentDay = result.getDay();
   let diff = targetDay - currentDay;
   if (diff <= 0) {
-    diff += 7; // Next week's occurrence
+    diff += 7; // Next occurrence
   }
   result.setDate(result.getDate() + diff);
   return result;
 }
 
 export function parseVoiceTask(raw: string, baseDateStr?: string): ParsedVoiceTask {
-  const now = new Date();
-  const baseDate = baseDateStr ? new Date(`${baseDateStr}T12:00:00`) : new Date();
+  // Always anchor spoken relative dates ("מחר", "למחר", "היום") to real-world current day
+  const realToday = new Date();
+  const realTodayStr = formatDate(realToday);
 
   let text = raw.trim();
-  let matchedDate: string = formatDate(baseDate);
+  // Default to today (or base date if provided and no spoken date found)
+  let matchedDate: string = realTodayStr;
   let dateLabel: string | undefined = undefined;
   let matchedTime: string | undefined = undefined;
 
   // 1. EXTRACT DATE
-  // Check "מחרתיים"
-  if (/\bמחרתיים\b/i.test(text)) {
-    const d = new Date(baseDate);
+  // Check "מחרתיים" (including "למחרתיים", "במחרתיים", "שמחרתיים")
+  const moxrotayimRegex = /(?:^|[\s,.:;!?"'()־-])(?:ל|ב|ש)?מחרתיים(?:$|[\s,.:;!?"'()־-])/i;
+  // Check "מחר" (including "למחר", "במחר", "שמחר", "למחרת")
+  const tomorrowRegex = /(?:^|[\s,.:;!?"'()־-])(?:ל|ב|ש)?מחרת?(?:$|[\s,.:;!?"'()־-])/i;
+  // Check "היום" (including "להיום", "בהיום", "שהיום")
+  const todayRegex = /(?:^|[\s,.:;!?"'()־-])(?:ל|ב|ש)?היום(?:$|[\s,.:;!?"'()־-])/i;
+  // Check "בעוד יומיים" / "עוד יומיים" / "בעוד 2 ימים"
+  const inTwoDaysRegex = /(?:^|[\s,.:;!?"'()־-])(?:ב?עוד\s+(?:יומיים|2\s+ימים|שני\s+ימים))(?:$|[\s,.:;!?"'()־-])/i;
+  // Check "בעוד 3 ימים"
+  const inThreeDaysRegex = /(?:^|[\s,.:;!?"'()־-])(?:ב?עוד\s+(?:3|שלושה)\s+ימים)(?:$|[\s,.:;!?"'()־-])/i;
+  // Check "שבוע הבא"
+  const nextWeekRegex = /(?:^|[\s,.:;!?"'()־-])(?:ל?שבוע\s+הבא|ב?עוד\s+שבוע)(?:$|[\s,.:;!?"'()־-])/i;
+  // Check Hebrew day of week
+  const dayOfWeekRegex = /(?:^|[\s,.:;!?"'()־-])(?:ביום|ליום|יום|ב|ל)?\s*(ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)(?:$|[\s,.:;!?"'()־-])/i;
+
+  if (moxrotayimRegex.test(text)) {
+    const d = new Date(realToday);
     d.setDate(d.getDate() + 2);
     matchedDate = formatDate(d);
     dateLabel = 'מחרתיים';
-    text = text.replace(/\bמחרתיים\b/gi, ' ');
-  }
-  // Check "מחר"
-  else if (/\bמחר\b/i.test(text)) {
-    const d = new Date(baseDate);
+    text = text.replace(moxrotayimRegex, ' ');
+  } else if (tomorrowRegex.test(text)) {
+    const d = new Date(realToday);
     d.setDate(d.getDate() + 1);
     matchedDate = formatDate(d);
     dateLabel = 'מחר';
-    text = text.replace(/\bמחר\b/gi, ' ');
-  }
-  // Check "היום"
-  else if (/\bהיום\b/i.test(text)) {
-    matchedDate = formatDate(baseDate);
+    text = text.replace(tomorrowRegex, ' ');
+  } else if (todayRegex.test(text)) {
+    matchedDate = realTodayStr;
     dateLabel = 'היום';
-    text = text.replace(/\bהיום\b/gi, ' ');
-  }
-  // Check "בעוד יומיים"
-  else if (/בעוד יומיים/i.test(text)) {
-    const d = new Date(baseDate);
+    text = text.replace(todayRegex, ' ');
+  } else if (inTwoDaysRegex.test(text)) {
+    const d = new Date(realToday);
     d.setDate(d.getDate() + 2);
     matchedDate = formatDate(d);
     dateLabel = 'בעוד יומיים';
-    text = text.replace(/בעוד יומיים/gi, ' ');
-  }
-  // Check "שבוע הבא"
-  else if (/שבוע הבא/i.test(text)) {
-    const d = new Date(baseDate);
+    text = text.replace(inTwoDaysRegex, ' ');
+  } else if (inThreeDaysRegex.test(text)) {
+    const d = new Date(realToday);
+    d.setDate(d.getDate() + 3);
+    matchedDate = formatDate(d);
+    dateLabel = 'בעוד 3 ימים';
+    text = text.replace(inThreeDaysRegex, ' ');
+  } else if (nextWeekRegex.test(text)) {
+    const d = new Date(realToday);
     d.setDate(d.getDate() + 7);
     matchedDate = formatDate(d);
     dateLabel = 'שבוע הבא';
-    text = text.replace(/שבוע הבא/gi, ' ');
-  }
-  // Check day of week: ביום ראשון / יום שני / בשישי...
-  else {
-    const dayMatch = text.match(/(?:ביום|יום|ל|ב)?\s*(ראשון|שני|שלישי|רביעי|חמישי|שישי|שבת)\b/i);
+    text = text.replace(nextWeekRegex, ' ');
+  } else {
+    const dayMatch = text.match(dayOfWeekRegex);
     if (dayMatch && dayMatch[1]) {
       const dayName = dayMatch[1];
       const targetDay = HEBREW_DAYS_MAP[dayName];
       if (targetDay !== undefined) {
-        const nextDate = getNextDayOfWeek(targetDay, baseDate);
+        const nextDate = getNextDayOfWeek(targetDay, realToday);
         matchedDate = formatDate(nextDate);
         dateLabel = `יום ${dayName}`;
-        text = text.replace(dayMatch[0], ' ');
+        text = text.replace(dayOfWeekRegex, ' ');
       }
-    }
-  }
-
-  // Check explicit numeric date DD/MM or DD.MM
-  const explicitDateMatch = text.match(/\b([0-3]?[0-9])[\/\.]([0-1]?[0-9])(?:[\/\.](20\d{2}))?\b/);
-  if (explicitDateMatch) {
-    const dNum = parseInt(explicitDateMatch[1], 10);
-    const mNum = parseInt(explicitDateMatch[2], 10);
-    const yNum = explicitDateMatch[3] ? parseInt(explicitDateMatch[3], 10) : now.getFullYear();
-    if (dNum >= 1 && dNum <= 31 && mNum >= 1 && mNum <= 12) {
-      matchedDate = `${yNum}-${String(mNum).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
-      dateLabel = `${dNum}/${mNum}`;
-      text = text.replace(explicitDateMatch[0], ' ');
+    } else {
+      // Check explicit numeric date DD/MM or DD.MM
+      const explicitDateMatch = text.match(/(?:^|[\s,.:;!?"'()־-])([0-3]?[0-9])[\/\.]([0-1]?[0-9])(?:[\/\.](20\d{2}))?(?:$|[\s,.:;!?"'()־-])/);
+      if (explicitDateMatch) {
+        const dNum = parseInt(explicitDateMatch[1], 10);
+        const mNum = parseInt(explicitDateMatch[2], 10);
+        const yNum = explicitDateMatch[3] ? parseInt(explicitDateMatch[3], 10) : realToday.getFullYear();
+        if (dNum >= 1 && dNum <= 31 && mNum >= 1 && mNum <= 12) {
+          matchedDate = `${yNum}-${String(mNum).padStart(2, '0')}-${String(dNum).padStart(2, '0')}`;
+          dateLabel = `${dNum}/${mNum}`;
+          text = text.replace(explicitDateMatch[0], ' ');
+        }
+      } else if (baseDateStr) {
+        // If no explicit or relative date was spoken at all, fall back to baseDateStr
+        matchedDate = baseDateStr;
+      }
     }
   }
 
   // 2. EXTRACT TIME
   // Check explicit digital time like 14:30 or ב-10:00 or בשעה 09:15
-  const digitalTimeMatch = text.match(/(?:בשעה\s+|ב-|ב\s*)?([0-2]?[0-9]):([0-5][0-9])\b/);
+  const digitalTimeMatch = text.match(/(?:בשעה\s+|ב-|ב\s*)?([0-2]?[0-9]):([0-5][0-9])(?:\s*(?:בבוקר|בצהריים|בערב|בלילה))?/i);
   if (digitalTimeMatch) {
-    const h = parseInt(digitalTimeMatch[1], 10);
+    let h = parseInt(digitalTimeMatch[1], 10);
     const m = parseInt(digitalTimeMatch[2], 10);
+    const timeMatchStr = digitalTimeMatch[0];
+
+    // Adjust for PM if words like "בצהריים", "בערב", "בלילה" are in the match
+    if (/(?:בערב|בלילה|בצהריים)/i.test(timeMatchStr) && h < 12) {
+      h += 12;
+    }
+
     if (h >= 0 && h <= 23 && m >= 0 && m <= 59) {
       matchedTime = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
       text = text.replace(digitalTimeMatch[0], ' ');
@@ -169,7 +191,6 @@ export function parseVoiceTask(raw: string, baseDateStr?: string): ParsedVoiceTa
       isPM = true;
       text = text.replace(/\b(?:בערב|בלילה|אחר הצהריים|אחה"צ|אחה״צ)\b/gi, ' ');
     } else if (/\b(?:בצהריים|בצהרים)\b/i.test(text)) {
-      // In Hebrew, 12, 1, 2, 3, 4 pm are "בצהריים"
       isPM = true;
       text = text.replace(/\b(?:בצהריים|בצהרים)\b/gi, ' ');
     } else if (/\b(?:בבוקר|בבקר)\b/i.test(text)) {
@@ -204,7 +225,7 @@ export function parseVoiceTask(raw: string, baseDateStr?: string): ParsedVoiceTa
 
     // If still no hour word, check single number: בשעה 16 / ב-4 / ב 10
     if (hour === null) {
-      const numMatch = text.match(/(?:בשעה\s+|ב-|ב\s*)(\d{1,2})\b/);
+      const numMatch = text.match(/(?:בשעה\s+|ב-|ב\s*)(\d{1,2})(?!\d)/);
       if (numMatch) {
         const val = parseInt(numMatch[1], 10);
         if (val >= 0 && val <= 23) {
@@ -229,8 +250,8 @@ export function parseVoiceTask(raw: string, baseDateStr?: string): ParsedVoiceTa
   }
 
   // 3. CLEAN UP TASK TITLE
-  // Clean leftovers of "בשעה", "שעה", "ב-", "ב", "בתאריך", "ליום"
-  text = text.replace(/\b(?:בשעה|שעה|בתאריך|ליום)\b/gi, ' ');
+  // Clean leftovers of "בשעה", "שעה", "בתאריך", "ליום", "בתאריך", "לשעה"
+  text = text.replace(/\b(?:בשעה|שעה|לשעה|בתאריך|ליום)\b/gi, ' ');
 
   // Clean conversational prefixes: תזכיר לי, תוסיף משימה, להוסיף, לרשום, תרשום, משימה, קבע
   text = text.replace(
@@ -240,7 +261,7 @@ export function parseVoiceTask(raw: string, baseDateStr?: string): ParsedVoiceTa
 
   // Clean trailing and leading dashes, colons, spaces
   text = text
-    .replace(/^[\s,.:;-]+|[\s,.:;-]+$/g, '')
+    .replace(/^[\s,.:;־-]+|[\s,.:;־-]+$/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
 
