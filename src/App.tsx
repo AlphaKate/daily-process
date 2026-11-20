@@ -7,7 +7,8 @@ import {
   getAppSettings,
   saveAppSettings,
   checkUnfinishedPreviousTasks,
-  ensureAssertivePracticePlanSeeded
+  ensureAssertivePracticePlanSeeded,
+  performEmergencyLocalWipe
 } from './services/storage';
 import {
   initGoogleTokenClient,
@@ -27,7 +28,7 @@ import {
 import { updateGoogleDocGoalStatus } from './services/googleDocs';
 import { syncCalendarEventsToTasks } from './services/googleCalendar';
 import { syncSuperListWithDrive } from './services/superListStorage';
-import { checkUrlForMicrosoftToken, getStoredMicrosoftToken } from './services/microsoftAuth';
+import { checkUrlForMicrosoftToken, getStoredMicrosoftToken, logoutMicrosoft } from './services/microsoftAuth';
 import { getSelectedToDoList, updateMicrosoftTaskStatus } from './services/microsoftToDo';
 import { Header } from './components/Header';
 import { DailyProcess } from './components/DailyProcess';
@@ -38,6 +39,7 @@ import { MorningReviewModal } from './components/MorningReviewModal';
 import { TaskAlertModal } from './components/TaskAlertModal';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal';
 import { VoiceTaskModal } from './components/VoiceTaskModal';
+import { SecurityDisconnectModal } from './components/SecurityDisconnectModal';
 import {
   NotificationPreferences,
   getNotificationPreferences,
@@ -83,6 +85,9 @@ export const App: React.FC = () => {
 
   // Voice Task Modal state
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+
+  // Security, Disconnect & Emergency Wipe Modal state
+  const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
 
   const lastSyncTimeRef = useRef<number>(0);
 
@@ -373,9 +378,35 @@ export const App: React.FC = () => {
   };
 
   const handleLogoutGoogle = () => {
-    logoutGoogle();
-    setGoogleUser(null);
-    showToast('התנתקת מחשבון Google', 'success');
+    setIsSecurityModalOpen(true);
+  };
+
+  const handleDisconnectOnly = async () => {
+    try {
+      await logoutGoogle(true);
+      logoutMicrosoft();
+      setGoogleUser(null);
+      showToast('התנתקת מ-Google וממקורות הענן (הרשאה בוטלה בשרת)', 'success');
+    } catch (e: any) {
+      showToast('התנתקות הושלמה מקומית', 'success');
+    }
+  };
+
+  const handleEmergencyWipe = async () => {
+    try {
+      await logoutGoogle(true);
+      logoutMicrosoft();
+      performEmergencyLocalWipe();
+      setTasks([]);
+      setGoogleUser(null);
+      showToast('כל הנתונים המקומיים נמחקו בהצלחה והסשן נותק', 'success');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (e) {
+      performEmergencyLocalWipe();
+      window.location.reload();
+    }
   };
 
   // Task actions
@@ -666,6 +697,7 @@ export const App: React.FC = () => {
         onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
         areNotificationsEnabled={notificationPrefs.enabled}
         onOpenVoiceTask={() => setIsVoiceModalOpen(true)}
+        onOpenSecurityModal={() => setIsSecurityModalOpen(true)}
       />
 
       {/* Floating Notification Toast */}
@@ -773,6 +805,16 @@ export const App: React.FC = () => {
         onClose={() => setIsVoiceModalOpen(false)}
         onAddTask={handleSaveVoiceTask}
         currentDate={currentDate}
+      />
+
+      {/* Security, Disconnect & Emergency Local Wipe Modal */}
+      <SecurityDisconnectModal
+        isOpen={isSecurityModalOpen}
+        onClose={() => setIsSecurityModalOpen(false)}
+        googleUser={googleUser}
+        tasksCount={tasks.filter(t => !t.isDeleted).length}
+        onDisconnectOnly={handleDisconnectOnly}
+        onEmergencyWipe={handleEmergencyWipe}
       />
     </div>
   );

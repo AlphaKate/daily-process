@@ -260,7 +260,43 @@ export const fetchAndSaveUserInfo = async (accessToken: string): Promise<GoogleU
   }
 };
 
-export const logoutGoogle = () => {
+/**
+ * Revokes Google OAuth Access Token on Google's authorization servers.
+ * Uses both Google Identity Services SDK (if loaded) and OAuth2 revoke endpoint.
+ */
+export const revokeGoogleAccess = async (token?: string): Promise<boolean> => {
+  const currentToken = token || getStoredToken()?.access_token;
+  if (!currentToken) return true;
+
+  try {
+    if (window.google?.accounts?.oauth2?.revoke) {
+      window.google.accounts.oauth2.revoke(currentToken, () => {
+        // SDK revocation callback completed
+      });
+    }
+
+    await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(currentToken)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
+    }).catch(() => {});
+
+    return true;
+  } catch (err) {
+    console.warn('Google revoke token error:', err);
+    return false;
+  }
+};
+
+/**
+ * Logs out of Google, revoking access token if requested, and cleans local Google keys.
+ */
+export const logoutGoogle = async (revokeOnServer: boolean = true): Promise<void> => {
+  const token = getStoredToken();
+  if (token?.access_token && revokeOnServer) {
+    await revokeGoogleAccess(token.access_token);
+  }
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem('google_drive_tasks_file_id');

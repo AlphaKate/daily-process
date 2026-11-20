@@ -268,3 +268,16 @@ const getInitialSeedTasks = (): Task[] => {
     }
   ];
 };
+
+/**
+ * Completely purges all local storage and session cache from this device
+ * (Emergency / Panic Wipe). Does NOT modify or delete remote files in Google Drive.
+ */
+export const performEmergencyLocalWipe = (): void => {
+  try {
+    localStorage.clear();
+    sessionStorage.clear();
+  } catch (e) {
+    console.error('Failed to execute emergency storage wipe:', e);
+  }
+};
