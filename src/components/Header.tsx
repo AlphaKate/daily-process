@@ -7,6 +7,7 @@ import {
   Calendar,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   Plus,
   RefreshCw,
   LogIn,
@@ -232,10 +233,31 @@ export const Header: React.FC<HeaderProps> = ({
         {activeView === 'process' && (
           <div className="mt-2 pt-1.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-1 w-full min-w-0">
             <div className="flex items-center gap-1.5 min-w-0 flex-1">
-              <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span className="text-xs sm:text-sm font-bold truncate">
-                {formatDateDisplayHebrew(currentDate)}
-              </span>
+              {/* Interactive Date Picker Chip */}
+              <div
+                className="relative group/date flex items-center gap-1 px-2 py-0.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border border-slate-200/70 dark:border-slate-700/70 transition-all cursor-pointer min-w-0"
+                title="לחץ לבחירת יום בלוח השנה"
+              >
+                <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 group-hover/date:scale-110 transition-transform" />
+                <span className="text-xs sm:text-sm font-bold truncate text-slate-800 dark:text-slate-100 select-none">
+                  {formatDateDisplayHebrew(currentDate)}
+                </span>
+                <ChevronDown className="w-3 h-3 text-slate-400 shrink-0 group-hover/date:text-slate-600 dark:group-hover/date:text-slate-200 transition-colors" />
+
+                {/* Invisible HTML5 date input over the entire chip */}
+                <input
+                  type="date"
+                  value={currentDate}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      onDateChange(e.target.value);
+                    }
+                  }}
+                  className="absolute inset-0 opacity-0 w-full h-full cursor-pointer z-10"
+                  aria-label="בחר יום בלוח השנה"
+                  title="בחר יום בלוח השנה"
+                />
+              </div>
 
               {/* Morning Review Quick Access Button */}
               {overdueTasksCount !== undefined && overdueTasksCount > 0 && isToday && (
