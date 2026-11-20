@@ -48,6 +48,7 @@ import {
   getNotificationPreferences,
   isTaskAlreadyAlerted,
   markTaskAsAlerted,
+  clearTaskAlertKey,
   playNotificationChime,
   sendSystemNotification
 } from './services/notificationService';
@@ -701,15 +702,27 @@ export const App: React.FC = () => {
     const now = new Date();
     now.setMinutes(now.getMinutes() + minutes);
     const newTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const newDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    // Clear any previous alerted record for this task so the new snoozed time will fire cleanly
+    clearTaskAlertKey(task.id);
+
     const updated = tasks.map(t =>
-      t.id === task.id ? { ...t, time: newTime, updatedAt: new Date().toISOString() } : t
+      t.id === task.id
+        ? {
+            ...t,
+            date: newDate,
+            time: newTime,
+            updatedAt: new Date().toISOString()
+          }
+        : t
     );
     persistTasks(updated);
     showToast(`המשימה נדחתה ב-${minutes} דקות (לשעה ${newTime})`, 'success');
     setActiveAlertTask(null);
   };
 
-  // Periodic Task Alert Checker (runs every 15s)
+  // Periodic Task Alert Checker (runs every 10s and on app focus/visibility)
   useEffect(() => {
     if (!notificationPrefs.enabled) return;
 
@@ -733,39 +746,61 @@ export const App: React.FC = () => {
         const taskMinutesSinceMidnight = tH * 60 + tM;
         const targetMinutes = taskMinutesSinceMidnight - (notificationPrefs.leadTimeMinutes || 0);
 
-        // Check if current time has reached target time (within a 2-minute trigger window)
-        if (
-          currentMinutesSinceMidnight >= targetMinutes &&
-          currentMinutesSinceMidnight <= targetMinutes + 2
-        ) {
-          if (!isTaskAlreadyAlerted(task.id, today, task.time)) {
-            markTaskAsAlerted(task.id, today, task.time);
+        // Check if target time has arrived or passed today
+        // Allows a generous 4-hour (240 min) window so any task that arrived or was snoozed
+        // while the screen was off or user was away triggers immediately upon returning!
+        if (currentMinutesSinceMidnight >= targetMinutes) {
+          const minutesPassed = currentMinutesSinceMidnight - targetMinutes;
+          if (minutesPassed <= 240) {
+            if (!isTaskAlreadyAlerted(task.id, today, task.time)) {
+              markTaskAsAlerted(task.id, today, task.time);
 
-            // Play sound chime if sound enabled
-            if (notificationPrefs.soundEnabled) {
-              playNotificationChime();
-            }
-
-            // Show native system notification
-            sendSystemNotification(
-              `⏰ תזכורת: ${task.title}`,
-              task.description || `השעה ${task.time} - הגיע זמן המשימה!`,
-              () => {
-                setActiveAlertTask(task);
+              // Play sound chime if sound enabled
+              if (notificationPrefs.soundEnabled) {
+                playNotificationChime();
               }
-            );
 
-            // Open in-app visual alert
-            setActiveAlertTask(task);
-            break; // Alert one task at a time
+              // Show native system notification
+              const bodyText =
+                task.description ||
+                (minutesPassed > 1
+                  ? `נקבעה לשעה ${task.time} (לפני ${minutesPassed} דק׳)`
+                  : `השעה ${task.time} - הגיע זמן המשימה!`);
+
+              sendSystemNotification(`⏰ תזכורת: ${task.title}`, bodyText, () => {
+                setActiveAlertTask(task);
+              });
+
+              // Open in-app visual alert
+              setActiveAlertTask(task);
+              break; // Alert one task at a time
+            }
           }
         }
       }
     };
 
     checkAlerts();
-    const interval = setInterval(checkAlerts, 15000);
-    return () => clearInterval(interval);
+    const interval = setInterval(checkAlerts, 10000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkAlerts();
+      }
+    };
+
+    const handleFocus = () => {
+      checkAlerts();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [tasks, notificationPrefs]);
 
   const handleTasksSynced = (newTasks: Task[], updatedTasks: Task[]) => {

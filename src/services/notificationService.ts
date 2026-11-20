@@ -143,3 +143,21 @@ export const isTaskAlreadyAlerted = (taskId: string, date: string, time: string)
   const key = `${date}_${taskId}_${time}`;
   return Boolean(records[key]);
 };
+
+export const clearTaskAlertKey = (taskId: string): void => {
+  try {
+    const records = getAlertedTaskKeys();
+    let modified = false;
+    for (const key of Object.keys(records)) {
+      if (key.includes(`_${taskId}_`)) {
+        delete records[key];
+        modified = true;
+      }
+    }
+    if (modified) {
+      localStorage.setItem(ALERTED_TASKS_KEY, JSON.stringify(records));
+    }
+  } catch (e) {
+    console.error('Failed to clear task alert key', e);
+  }
+};
