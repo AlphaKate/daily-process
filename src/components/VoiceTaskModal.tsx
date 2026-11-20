@@ -14,6 +14,11 @@ import { parseVoiceTask, formatDate } from '../services/voiceTaskParser';
 import { getTodayDateString } from '../services/storage';
 import { scanTextForSensitiveData, DLPFinding } from '../services/dlpService';
 import { DLPWarningModal } from './DLPWarningModal';
+import {
+  getStoredMicPermission,
+  setStoredMicPermission,
+  requestExplicitMicPermission
+} from '../services/microphoneService';
 
 interface VoiceTaskModalProps {
   isOpen: boolean;
@@ -52,6 +57,7 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
   const [parsedTime, setParsedTime] = useState<string>('');
   const [dateBadge, setDateBadge] = useState<string | undefined>();
   const [addToCalendar, setAddToCalendar] = useState<boolean>(false);
+  const [isMicPermitted, setIsMicPermitted] = useState<boolean>(() => getStoredMicPermission());
   const [dlpFindings, setDlpFindings] = useState<DLPFinding[]>([]);
   const [isDlpModalOpen, setIsDlpModalOpen] = useState<boolean>(false);
 
@@ -90,6 +96,9 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
       recognition.onstart = () => {
         setIsListening(true);
         setErrorMsg(null);
+        // Persist microphone permission setting as approved
+        setStoredMicPermission(true);
+        setIsMicPermitted(true);
       };
 
       recognition.onresult = (event: any) => {
@@ -123,7 +132,9 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
       recognition.onerror = (event: any) => {
         console.warn('Speech recognition error:', event.error);
         if (event.error === 'not-allowed') {
-          setErrorMsg('גישה למיקרופון נחסמה. נא לאשר גישה למיקרופון בהגדרות הדפדפן.');
+          setStoredMicPermission(false);
+          setIsMicPermitted(false);
+          setErrorMsg('גישה למיקרופון נחסמה. לחצי על "אשר מיקרופון" למטה כדי לאפשר הקלטה.');
         } else if (event.error === 'no-speech') {
           // No speech detected, wait or let user retry
         } else {
@@ -200,6 +211,17 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
 
   const handleTextChange = (text: string) => {
     setParsedTitle(text);
+  };
+
+  const handleRequestMicPermission = async () => {
+    const granted = await requestExplicitMicPermission();
+    if (granted) {
+      setIsMicPermitted(true);
+      setErrorMsg(null);
+      startListening();
+    } else {
+      setErrorMsg('הגישה למיקרופון לא אושרה. נא לוודא שהמיקרופון מורשה בהגדרות הדפדפן.');
+    }
   };
 
   const performAddVoiceTask = () => {
@@ -329,6 +351,25 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
               </span>
             </div>
 
+            {/* Microphone Permission Status Badge / Prompt */}
+            <div className="mt-2.5">
+              {isMicPermitted ? (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shadow-2xs">
+                  <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 stroke-[3]" />
+                  <span>אישור מיקרופון נשמר בהצלחה ✓</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleRequestMicPermission}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-orange-100 hover:bg-orange-200 dark:bg-orange-950 dark:hover:bg-orange-900 text-orange-800 dark:text-orange-200 border border-orange-300 dark:border-orange-800 transition-colors cursor-pointer"
+                >
+                  <Mic className="w-3.5 h-3.5" />
+                  <span>אשר ושמור גישה למיקרופון</span>
+                </button>
+              )}
+            </div>
+
             {/* Hint examples */}
             <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400 max-w-sm">
               דוגמה: <em>"פגישה עם דני מחר בשעה ארבע"</em> או <em>"רופא שיניים ביום שלישי בעשר בבוקר"</em>
@@ -337,9 +378,20 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
 
           {/* Error Message */}
           {errorMsg && (
-            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-800 dark:text-amber-200 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
-              <span>{errorMsg}</span>
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-800 dark:text-amber-200 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <span>{errorMsg}</span>
+              </div>
+              {!isMicPermitted && (
+                <button
+                  type="button"
+                  onClick={handleRequestMicPermission}
+                  className="px-2.5 py-1 text-[11px] font-bold bg-amber-600 hover:bg-amber-700 active:scale-95 text-white rounded-lg transition-colors shrink-0 cursor-pointer"
+                >
+                  אשר מיקרופון
+                </button>
+              )}
             </div>
           )}
 

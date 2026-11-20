@@ -5,7 +5,8 @@ import {
   Volume2,
   Clock,
   Check,
-  Smartphone
+  Smartphone,
+  Mic
 } from 'lucide-react';
 import {
   NotificationPreferences,
@@ -16,6 +17,10 @@ import {
   sendSystemNotification,
   isNotificationSupported
 } from '../services/notificationService';
+import {
+  getStoredMicPermission,
+  requestExplicitMicPermission
+} from '../services/microphoneService';
 
 interface NotificationSettingsModalProps {
   isOpen: boolean;
@@ -37,6 +42,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
     getSystemNotificationPermission()
   );
   const [testSent, setTestSent] = useState(false);
+  const [micPermitted, setMicPermitted] = useState<boolean>(() => getStoredMicPermission());
 
   if (!isOpen) return null;
 
@@ -59,6 +65,11 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
       setTestSent(true);
       setTimeout(() => setTestSent(false), 3000);
     }
+  };
+
+  const handleRequestMic = async () => {
+    const granted = await requestExplicitMicPermission();
+    setMicPermitted(granted);
   };
 
   const handleTestChime = () => {
@@ -200,6 +211,37 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
               )}
             </div>
           )}
+
+          {/* 4. Microphone Permission Setting */}
+          <div className="p-3.5 bg-slate-50 dark:bg-slate-850 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Mic className="w-4 h-4 text-orange-500" />
+                <span className="text-xs font-bold text-slate-900 dark:text-white">
+                  הרשאת מיקרופון (משימה קולית)
+                </span>
+              </div>
+              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                micPermitted
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                  : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+              }`}>
+                {micPermitted ? 'מאושר ושמור ✓' : 'טרם אושר'}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              מאפשר הקלטת משימות קוליות באופן מיידי בלחיצה אחת
+            </p>
+            {!micPermitted && (
+              <button
+                type="button"
+                onClick={handleRequestMic}
+                className="w-full mt-1 py-1.5 px-3 bg-orange-600 hover:bg-orange-700 active:scale-98 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                אשר ושמור גישה למיקרופון
+              </button>
+            )}
+          </div>
 
           {/* 4. Lead Time Setting */}
           <div className="p-3.5 bg-slate-50 dark:bg-slate-850 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-2">
