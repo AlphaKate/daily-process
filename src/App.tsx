@@ -66,7 +66,7 @@ export const App: React.FC = () => {
   // Google integration state
   const [googleUser, setGoogleUser] = useState<GoogleUser | null>(getStoredGoogleUser);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
-  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
 
   // Modals state
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -98,7 +98,7 @@ export const App: React.FC = () => {
 
   const lastSyncTimeRef = useRef<number>(0);
 
-  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+  const showToast = (message: string, type: 'success' | 'error' | 'warning' = 'success') => {
     setNotification({ message, type });
     setTimeout(() => {
       setNotification(prev => (prev?.message === message ? null : prev));
@@ -544,40 +544,103 @@ export const App: React.FC = () => {
     // If user checked "Add to Google Calendar"
     if (taskData.addToCalendar) {
       const token = getStoredToken();
-      if (token?.access_token) {
-        try {
-          const createdEvent = await createGoogleCalendarEvent(token.access_token, {
-            title: targetTitle,
-            date: targetDate,
-            time: taskData.time,
-            durationMinutes: taskData.durationMinutes,
-            description: taskData.description
-          });
+      if (!token?.access_token) {
+        // Not connected to Google
+        const newTask: Task = {
+          id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          title: targetTitle,
+          description: taskData.description,
+          category: taskData.category || defaultCategoryForNew,
+          completed: false,
+          date: targetDate,
+          time: taskData.time,
+          durationMinutes: taskData.durationMinutes,
+          milestoneTitle: taskData.milestoneTitle,
+          link: taskData.link,
+          createdAt: now,
+          updatedAt: now
+        };
+        const updated = [newTask, ...tasks];
+        persistTasks(updated);
+        showToast(
+          'המשימה נוספה ל-Must Do, אך לא סונכרנה ליומן (לא מחובר לחשבון Google). יש להתחבר ל-Google כדי לסנכרן ליומן.',
+          'warning'
+        );
+        return;
+      }
 
-          const newGcalTask: Task = {
-            id: `gcal-${createdEvent.id}`,
-            title: targetTitle,
-            description: taskData.description,
-            category: 'must_do',
-            completed: false,
-            date: targetDate,
-            time: taskData.time,
-            durationMinutes: taskData.durationMinutes || (taskData.time ? 30 : undefined),
-            link: createdEvent.htmlLink || taskData.link,
-            createdAt: now,
-            updatedAt: now
-          };
+      try {
+        const createdEvent = await createGoogleCalendarEvent(token.access_token, {
+          title: targetTitle,
+          date: targetDate,
+          time: taskData.time,
+          durationMinutes: taskData.durationMinutes,
+          description: taskData.description
+        });
 
-          const updated = [newGcalTask, ...tasks];
-          persistTasks(updated);
-          showToast(`המשימה נוספה בהצלחה ל-Must Do וסונכרנה ליומן Google! 📅`, 'success');
-          return;
-        } catch (err: any) {
-          console.error('Failed to create event in Google Calendar:', err);
-          showToast(`שגיאה בסנכרון ליומן Google: ${err.message || 'נסה שוב'}. המשימה נשמרה מקומית.`, 'error');
+        const newGcalTask: Task = {
+          id: `gcal-${createdEvent.id}`,
+          title: targetTitle,
+          description: taskData.description,
+          category: 'must_do',
+          completed: false,
+          date: targetDate,
+          time: taskData.time,
+          durationMinutes: taskData.durationMinutes || (taskData.time ? 30 : undefined),
+          link: createdEvent.htmlLink || taskData.link,
+          createdAt: now,
+          updatedAt: now
+        };
+
+        const updated = [newGcalTask, ...tasks];
+        persistTasks(updated);
+        showToast(`המשימה נוספה בהצלחה ל-Must Do וסונכרנה ליומן Google! 📅`, 'success');
+
+        // Background calendar sync
+        syncCalendarEventsToTasks(currentDate, token.access_token, updated).catch(e =>
+          console.warn('Background sync after event creation warning:', e)
+        );
+        return;
+      } catch (err: any) {
+        console.error('Failed to create event in Google Calendar:', err);
+        const isAuthError =
+          err.status === 401 ||
+          err.status === 403 ||
+          (err.message && /insufficient|permission|unauthorized|scope|invalid_token/i.test(err.message));
+
+        if (isAuthError) {
+          localStorage.removeItem('google_oauth_token_v1');
         }
-      } else {
-        showToast('המשימה נוספה ל-Must Do (יש להתחבר ל-Google כדי לסנכרן אוטומטית ליומן) ℹ️', 'success');
+
+        const newTask: Task = {
+          id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          title: targetTitle,
+          description: taskData.description,
+          category: taskData.category || defaultCategoryForNew,
+          completed: false,
+          date: targetDate,
+          time: taskData.time,
+          durationMinutes: taskData.durationMinutes,
+          milestoneTitle: taskData.milestoneTitle,
+          link: taskData.link,
+          createdAt: now,
+          updatedAt: now
+        };
+        const updated = [newTask, ...tasks];
+        persistTasks(updated);
+
+        if (isAuthError) {
+          showToast(
+            'המשימה נשמרה מקומית. הרשאת כתיבה ליומן Google חסרה או פגה — נא להתחבר מחדש ל-Google.',
+            'error'
+          );
+        } else {
+          showToast(
+            `המשימה נשמרה מקומית. שגיאה בסנכרון ליומן Google: ${err.message || 'נסה שוב'}.`,
+            'error'
+          );
+        }
+        return;
       }
     }
 
@@ -615,40 +678,95 @@ export const App: React.FC = () => {
     // If voice task requested calendar sync
     if (taskData.addToCalendar) {
       const token = getStoredToken();
-      if (token?.access_token) {
-        try {
-          const createdEvent = await createGoogleCalendarEvent(token.access_token, {
-            title: targetTitle,
-            date: targetDate,
-            time: taskData.time
-          });
+      if (!token?.access_token) {
+        // Not connected to Google! Save locally to Must Do
+        const newTask: Task = {
+          id: `voice-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          title: targetTitle,
+          category: 'must_do',
+          completed: false,
+          date: targetDate,
+          time: taskData.time,
+          createdAt: now,
+          updatedAt: now
+        };
+        const updated = [newTask, ...tasks];
+        persistTasks(updated);
+        showToast(
+          'המשימה נשמרה ב-Must Do, אך לא סונכרנה ליומן (אינך מחובר/ת לחשבון Google). יש להתחבר ל-Google לסנכרון.',
+          'warning'
+        );
+        return;
+      }
 
-          const newGcalTask: Task = {
-            id: `gcal-${createdEvent.id}`,
-            title: targetTitle,
-            category: 'must_do',
-            completed: false,
-            date: targetDate,
-            time: taskData.time,
-            durationMinutes: taskData.time ? 30 : undefined,
-            link: createdEvent.htmlLink,
-            createdAt: now,
-            updatedAt: now
-          };
+      try {
+        const createdEvent = await createGoogleCalendarEvent(token.access_token, {
+          title: targetTitle,
+          date: targetDate,
+          time: taskData.time
+        });
 
-          const updated = [newGcalTask, ...tasks];
-          persistTasks(updated);
-          showToast(
-            `משימה קולית נוצרה וסונכרנה ליומן Google לתאריך ${targetDate}${taskData.time ? ` בשעה ${taskData.time}` : ''}! 🎙️📅`,
-            'success'
-          );
-          return;
-        } catch (err: any) {
-          console.error('Failed to create voice event in Google Calendar:', err);
-          showToast(`שגיאה ביצירת אירוע ביומן: ${err.message || 'נשמר מקומית'}.`, 'error');
+        const newGcalTask: Task = {
+          id: `gcal-${createdEvent.id}`,
+          title: targetTitle,
+          category: 'must_do',
+          completed: false,
+          date: targetDate,
+          time: taskData.time,
+          durationMinutes: taskData.time ? 30 : undefined,
+          link: createdEvent.htmlLink,
+          createdAt: now,
+          updatedAt: now
+        };
+
+        const updated = [newGcalTask, ...tasks];
+        persistTasks(updated);
+        showToast(
+          `משימה קולית נוצרה וסונכרנה ליומן Google לתאריך ${targetDate}${taskData.time ? ` בשעה ${taskData.time}` : ''}! 📅`,
+          'success'
+        );
+
+        // Run background calendar sync
+        syncCalendarEventsToTasks(currentDate, token.access_token, updated).catch(e =>
+          console.warn('Background sync after event creation warning:', e)
+        );
+        return;
+      } catch (err: any) {
+        console.error('Failed to create voice event in Google Calendar:', err);
+        const isAuthError =
+          err.status === 401 ||
+          err.status === 403 ||
+          (err.message && /insufficient|permission|unauthorized|scope|invalid_token/i.test(err.message));
+
+        if (isAuthError) {
+          localStorage.removeItem('google_oauth_token_v1');
         }
-      } else {
-        showToast('משימה קולית נשמרה ב-Must Do (התחבר/י ל-Google לסנכרון יומן) 🎙️', 'success');
+
+        const newTask: Task = {
+          id: `voice-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          title: targetTitle,
+          category: 'must_do',
+          completed: false,
+          date: targetDate,
+          time: taskData.time,
+          createdAt: now,
+          updatedAt: now
+        };
+        const updated = [newTask, ...tasks];
+        persistTasks(updated);
+
+        if (isAuthError) {
+          showToast(
+            'המשימה נשמרה מקומית. הרשאת כתיבה ליומן Google חסרה או פגה — נא להתחבר מחדש לחשבון Google.',
+            'error'
+          );
+        } else {
+          showToast(
+            `המשימה נשמרה מקומית. שגיאה ביצירת אירוע ביומן: ${err.message || 'שגיאת רשת'}.`,
+            'error'
+          );
+        }
+        return;
       }
     }
 
@@ -896,6 +1014,8 @@ export const App: React.FC = () => {
             className={`p-3.5 rounded-2xl shadow-xl border flex items-center justify-between gap-3 text-xs font-semibold ${
               notification.type === 'success'
                 ? 'bg-emerald-600 text-white border-emerald-500 shadow-emerald-900/20'
+                : notification.type === 'warning'
+                ? 'bg-amber-600 text-white border-amber-500 shadow-amber-900/20'
                 : 'bg-rose-600 text-white border-rose-500 shadow-rose-900/20'
             }`}
           >

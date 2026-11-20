@@ -20,6 +20,7 @@ export interface GoogleUser {
 export interface GoogleAuthToken {
   access_token: string;
   expires_at: number;
+  scope?: string;
 }
 
 declare global {
@@ -145,11 +146,13 @@ export const checkUrlForAuthToken = (): GoogleAuthToken | null => {
     if (params.get('state') === 'ms_auth') return null;
     const accessToken = params.get('access_token');
     const expiresIn = Number(params.get('expires_in')) || 3599;
+    const scope = params.get('scope') || undefined;
 
     if (accessToken) {
       const token: GoogleAuthToken = {
         access_token: accessToken,
-        expires_at: Date.now() + expiresIn * 1000
+        expires_at: Date.now() + expiresIn * 1000,
+        scope
       };
       saveStoredToken(token);
       
@@ -206,7 +209,8 @@ export const initGoogleTokenClient = (
         if (response.access_token) {
           const token: GoogleAuthToken = {
             access_token: response.access_token,
-            expires_at: Date.now() + (Number(response.expires_in) || 3599) * 1000
+            expires_at: Date.now() + (Number(response.expires_in) || 3599) * 1000,
+            scope: response.scope || undefined
           };
 
           saveStoredToken(token);
@@ -277,6 +281,20 @@ export const getStoredToken = (): GoogleAuthToken | null => {
 
 export const saveStoredToken = (token: GoogleAuthToken): void => {
   localStorage.setItem(TOKEN_KEY, JSON.stringify(token));
+};
+
+export const isGoogleConnected = (): boolean => {
+  const token = getStoredToken();
+  return Boolean(token?.access_token);
+};
+
+export const hasCalendarWriteScope = (): boolean => {
+  const token = getStoredToken();
+  if (!token?.access_token) return false;
+  if (token.scope) {
+    return token.scope.includes('calendar.events');
+  }
+  return true;
 };
 
 export const getStoredGoogleUser = (): GoogleUser | null => {

@@ -81,9 +81,10 @@ export function parseVoiceTask(raw: string, baseDateStr?: string): ParsedVoiceTa
   let dateLabel: string | undefined = undefined;
   let matchedTime: string | undefined = undefined;
 
-  // Calendar intent detection ("יומן", "פגישה", "אירוע", "לוח שנה")
-  const calendarIntentRegex = /(?:^|[\s,.:;!?"'()־-])(?:ב|ל)?(?:יומן|פגישה|אירוע|לוח\s*שנה|calendar)(?:$|[\s,.:;!?"'()־-])/i;
-  const addToCalendar = calendarIntentRegex.test(raw);
+  // Calendar intent detection ("יומן", "פגישה", "אירוע", "לוח שנה", "קלנדר", "תור", "זימון")
+  const calendarIntentRegex = /(?:^|[\s,.:;!?"'()־-])(?:ב|ל|ה)?(?:יומן|יומנים|יומני|פגישה|פגישת|פגישות|אירוע|אירועים|לוח\s*שנה|לוח\s*השנה|קלנדר|calendar|תור|תורים|זימון)(?:$|[\s,.:;!?"'()־-])/i;
+  const calendarPrefixRegex = /^\s*(?:תוסיף|תוסיפי|להוסיף|תרשום|תרשמי|לרשום|תכניס|להכניס|שים|לשים|קבע|לקבוע|תקבע|תקבעי|תזמן|לזמן)\s+(?:לי\s+)?(?:ב|ל)?(?:יומן|יומני|לוח\s*שנה|קלנדר|פגישה|תור)/i;
+  const addToCalendar = calendarIntentRegex.test(raw) || calendarPrefixRegex.test(raw);
 
   // 1. EXTRACT DATE
   // Check "מחרתיים" (including "למחרתיים", "במחרתיים", "שמחרתיים")
@@ -260,12 +261,14 @@ export function parseVoiceTask(raw: string, baseDateStr?: string): ParsedVoiceTa
 
   // Clean conversational prefixes: תזכיר לי, תוסיף משימה, להוסיף, לרשום, תרשום, משימה, קבע, ליומן
   text = text.replace(
-    /^\s*(?:תזכיר לי|תזכרי לי|תוסיף לי|תוסיפי לי|תוסיף משימה|תוסיפי משימה|תוסיף ליומן|תוסיפי ליומן|להוסיף ליומן|לרשום ביומן|תרשום ביומן|תרשמי ביומן|תוסיף|תוסיפי|להוסיף|לרשום|תרשום|תרשמי|משימה|תפתח משימה|קבע פגישה|לקבוע פגישה|קבע|לקבוע|תקבע|תקבעי|יש לי)\s*(?:משימה|ש|את|ליומן|ביומן)?\s*/i,
+    /^\s*(?:תזכיר לי|תזכרי לי|תוסיף לי|תוסיפי לי|תוסיף משימה|תוסיפי משימה|תוסיף ליומן|תוסיפי ליומן|להוסיף ליומן|לרשום ביומן|תרשום ביומן|תרשמי ביומן|תכניס ליומן|להכניס ליומן|שים ביומן|לשים ביומן|קבע ביומן|תקבע ביומן|תוסיף|תוסיפי|להוסיף|לרשום|תרשום|תרשמי|תכניס|שים|משימה|תפתח משימה|קבע פגישה|לקבוע פגישה|קבע תור|לקבוע תור|תקבע פגישה|תקבע תור|קבע|לקבוע|תקבע|תקבעי|תזמן|לזמן|יש לי)\s*(?:משימה|ש|את|ליומן|ביומן|לי|ליומני)?\s*/i,
     ''
   );
 
-  // Clean standalone "ביומן" / "ליומן" / "יומן גוגל"
-  text = text.replace(/\b(?:ב|ל)?יומן(?:\s+גוגל)?\b/gi, ' ');
+  // Clean standalone "ביומן" / "ליומן" / "יומן גוגל" / "בלוח שנה" / "בקלנדר"
+  text = text.replace(/\b(?:ב|ל|ה)?(?:יומן|יומני)(?:\s+גוגל)?\b/gi, ' ');
+  text = text.replace(/\b(?:ב|ל|ה)?לוח\s+(?:ה)?שנה\b/gi, ' ');
+  text = text.replace(/\b(?:ב|ל)?קלנדר\b/gi, ' ');
 
   // Clean trailing and leading dashes, colons, spaces
   text = text
@@ -273,9 +276,14 @@ export function parseVoiceTask(raw: string, baseDateStr?: string): ParsedVoiceTa
     .replace(/\s{2,}/g, ' ')
     .trim();
 
+  // If text starts with "עם ...", make it "פגישה עם ..."
+  if (addToCalendar && /^עם\s+/i.test(text)) {
+    text = 'פגישה ' + text;
+  }
+
   // Fallback title if all words were parsed as dates/times
   if (!text) {
-    text = addToCalendar ? 'פגישה ביומן' : 'משימה קולית חדשה';
+    text = addToCalendar ? 'אירוע ביומן' : 'משימה קולית חדשה';
   }
 
   return {

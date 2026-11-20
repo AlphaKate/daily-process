@@ -3,6 +3,7 @@ import { Task, TaskCategory } from '../types';
 import { X, Link as LinkIcon, Milestone, AlertCircle, FileText, Clock, Calendar } from 'lucide-react';
 import { scanTextForSensitiveData, DLPFinding } from '../services/dlpService';
 import { DLPWarningModal } from './DLPWarningModal';
+import { getStoredToken } from '../services/googleAuth';
 
 interface TaskModalProps {
   isOpen: boolean;
@@ -362,6 +363,20 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   </span>
                 </div>
               </label>
+
+              {addToCalendar && !getStoredToken()?.access_token && (
+                <div className="mt-1.5 p-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-200 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <span>חשבון Google אינו מחובר. המשימה תישמר מקומית ב-Must Do אך לא תסונכרן ליומן עד להתחברות.</span>
+                </div>
+              )}
+
+              {addToCalendar && Boolean(getStoredToken()?.access_token) && (
+                <div className="mt-1.5 p-1.5 px-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-[11px] text-blue-800 dark:text-blue-200 flex items-center gap-1.5">
+                  <span className="text-xs">📅</span>
+                  <span>מחובר ל-Google: המשימה תתווסף ישירות ליומן Google Calendar</span>
+                </div>
+              )}
             </div>
           </div>
 

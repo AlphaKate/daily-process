@@ -19,6 +19,7 @@ import {
   setStoredMicPermission,
   requestExplicitMicPermission
 } from '../services/microphoneService';
+import { getStoredToken } from '../services/googleAuth';
 
 interface VoiceTaskModalProps {
   isOpen: boolean;
@@ -211,6 +212,10 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
 
   const handleTextChange = (text: string) => {
     setParsedTitle(text);
+    const parsed = parseVoiceTask(text, currentDate);
+    if (parsed.addToCalendar && !addToCalendar) {
+      setAddToCalendar(true);
+    }
   };
 
   const handleRequestMicPermission = async () => {
@@ -533,6 +538,22 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
                   </span>
                 )}
               </button>
+
+              {addToCalendar && !getStoredToken()?.access_token && (
+                <div className="mt-2 p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-[11px] text-amber-800 dark:text-amber-200 flex items-start gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <span>
+                    חשבון Google אינו מחובר. המשימה תישמר ב-Must Do, אך לא תסונכרן ליומן עד להתחברות לחשבון Google.
+                  </span>
+                </div>
+              )}
+
+              {addToCalendar && Boolean(getStoredToken()?.access_token) && (
+                <div className="mt-2 p-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 text-[11px] text-blue-800 dark:text-blue-200 flex items-center gap-1.5">
+                  <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <span>מחובר ל-Google: המשימה תיווצר ישירות ביומן Google Calendar שלך</span>
+                </div>
+              )}
             </div>
           </div>
 

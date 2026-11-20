@@ -233,6 +233,27 @@ export interface CreateCalendarEventParams {
 }
 
 /**
+ * Format a Date object to RFC3339 with exact local timezone offset (e.g. 2026-11-20T11:00:00+02:00)
+ * Required by Google Calendar API v3 to avoid timezone offset mismatches.
+ */
+export const formatRFC3339 = (date: Date): string => {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  const seconds = pad(date.getSeconds());
+
+  const offsetMinutes = -date.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? '+' : '-';
+  const offsetHours = pad(Math.floor(Math.abs(offsetMinutes) / 60));
+  const offsetMins = pad(Math.abs(offsetMinutes) % 60);
+
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}${sign}${offsetHours}:${offsetMins}`;
+};
+
+/**
  * Creates a new event in the user's primary Google Calendar
  */
 export const createGoogleCalendarEvent = async (
@@ -251,11 +272,11 @@ export const createGoogleCalendarEvent = async (
     const endDate = new Date(startDate.getTime() + duration * 60 * 1000);
 
     start = {
-      dateTime: startDate.toISOString(),
+      dateTime: formatRFC3339(startDate),
       timeZone
     };
     end = {
-      dateTime: endDate.toISOString(),
+      dateTime: formatRFC3339(endDate),
       timeZone
     };
   } else {
@@ -292,9 +313,13 @@ export const createGoogleCalendarEvent = async (
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(
-      errorData.error?.message || `Failed to create event in Google Calendar: ${response.statusText}`
-    );
+    const message =
+      errorData.error?.message ||
+      `שגיאה ביצירת אירוע ביומן Google (${response.status}: ${response.statusText})`;
+    const err = new Error(message) as any;
+    err.status = response.status;
+    err.code = errorData.error?.code || response.status;
+    throw err;
   }
 
   const created = (await response.json()) as CalendarEvent;
