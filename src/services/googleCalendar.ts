@@ -223,6 +223,84 @@ export const fetchCalendarEventsWindow = async (
   };
 };
 
+export interface CreateCalendarEventParams {
+  title: string;
+  date: string; // YYYY-MM-DD
+  time?: string; // HH:mm
+  durationMinutes?: number;
+  description?: string;
+  location?: string;
+}
+
+/**
+ * Creates a new event in the user's primary Google Calendar
+ */
+export const createGoogleCalendarEvent = async (
+  accessToken: string,
+  params: CreateCalendarEventParams
+): Promise<CalendarEvent> => {
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Jerusalem';
+  let start: { dateTime?: string; date?: string; timeZone?: string };
+  let end: { dateTime?: string; date?: string; timeZone?: string };
+
+  if (params.time) {
+    const [hours, minutes] = params.time.split(':').map(Number);
+    const [year, month, day] = params.date.split('-').map(Number);
+    const startDate = new Date(year, month - 1, day, hours, minutes, 0);
+    const duration = params.durationMinutes && params.durationMinutes > 0 ? params.durationMinutes : 30;
+    const endDate = new Date(startDate.getTime() + duration * 60 * 1000);
+
+    start = {
+      dateTime: startDate.toISOString(),
+      timeZone
+    };
+    end = {
+      dateTime: endDate.toISOString(),
+      timeZone
+    };
+  } else {
+    // All-day event
+    start = { date: params.date };
+    const [year, month, day] = params.date.split('-').map(Number);
+    const nextDay = new Date(year, month - 1, day + 1);
+    const nextDayStr = formatLocalYMD(nextDay);
+    end = { date: nextDayStr };
+  }
+
+  const payload: any = {
+    summary: params.title,
+    start,
+    end
+  };
+
+  if (params.description?.trim()) {
+    payload.description = params.description.trim();
+  }
+  if (params.location?.trim()) {
+    payload.location = params.location.trim();
+  }
+
+  const url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      errorData.error?.message || `Failed to create event in Google Calendar: ${response.statusText}`
+    );
+  }
+
+  const created = (await response.json()) as CalendarEvent;
+  return created;
+};
+
 /**
  * Synchronize Google Calendar events with application tasks:
  * - Automatically moves tasks if their date or time changed in Google Calendar (e.g. from tomorrow to today).

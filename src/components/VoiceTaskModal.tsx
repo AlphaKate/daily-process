@@ -23,6 +23,7 @@ interface VoiceTaskModalProps {
     date: string;
     time?: string;
     category: 'must_do';
+    addToCalendar?: boolean;
   }) => void;
   currentDate: string;
 }
@@ -50,6 +51,7 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
   const [parsedDate, setParsedDate] = useState(currentDate || getTodayDateString());
   const [parsedTime, setParsedTime] = useState<string>('');
   const [dateBadge, setDateBadge] = useState<string | undefined>();
+  const [addToCalendar, setAddToCalendar] = useState<boolean>(false);
   const [dlpFindings, setDlpFindings] = useState<DLPFinding[]>([]);
   const [isDlpModalOpen, setIsDlpModalOpen] = useState<boolean>(false);
 
@@ -62,6 +64,7 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
       setTranscript('');
       setInterimTranscript('');
       setErrorMsg(null);
+      setAddToCalendar(false);
       return;
     }
 
@@ -111,6 +114,9 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
           setParsedDate(parsed.date);
           setParsedTime(parsed.time || '');
           setDateBadge(parsed.dateLabel);
+          if (parsed.addToCalendar) {
+            setAddToCalendar(true);
+          }
         }
       };
 
@@ -202,7 +208,8 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
       title: parsedTitle.trim(),
       date: parsedDate || currentDate || getTodayDateString(),
       time: parsedTime || undefined,
-      category: 'must_do'
+      category: 'must_do',
+      addToCalendar
     });
     onClose();
   };
@@ -440,6 +447,38 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
                   {parsedTime ? `תיקבע תזכורת אוטומטית לשעה ${parsedTime}` : 'לא הוגדרה שעה ספציפית'}
                 </p>
               </div>
+            </div>
+
+            {/* Google Calendar Sync Toggle */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setAddToCalendar(!addToCalendar)}
+                className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                  addToCalendar
+                    ? 'bg-blue-50 dark:bg-blue-950/60 border-blue-300 dark:border-blue-700 text-blue-800 dark:text-blue-200 shadow-2xs'
+                    : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`w-4 h-4 rounded-md flex items-center justify-center border transition-colors ${
+                      addToCalendar
+                        ? 'bg-blue-600 border-blue-600 text-white'
+                        : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700'
+                    }`}
+                  >
+                    {addToCalendar && <Check className="w-3 h-3 stroke-[3]" />}
+                  </div>
+                  <Calendar className={`w-4 h-4 ${addToCalendar ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400'}`} />
+                  <span>סנכרן והוסף ליומן Google Calendar</span>
+                </div>
+                {addToCalendar && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/80 text-blue-700 dark:text-blue-300 font-bold">
+                    פעיל 📅
+                  </span>
+                )}
+              </button>
             </div>
           </div>
 

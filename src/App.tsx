@@ -27,7 +27,7 @@ import {
   loadTasksFromDriveFile
 } from './services/googleDrive';
 import { updateGoogleDocGoalStatus } from './services/googleDocs';
-import { syncCalendarEventsToTasks } from './services/googleCalendar';
+import { syncCalendarEventsToTasks, createGoogleCalendarEvent } from './services/googleCalendar';
 import { syncSuperListWithDrive } from './services/superListStorage';
 import { checkUrlForMicrosoftToken, getStoredMicrosoftToken, logoutMicrosoft } from './services/microsoftAuth';
 import { getSelectedToDoList, updateMicrosoftTaskStatus } from './services/microsoftToDo';
@@ -518,52 +518,146 @@ export const App: React.FC = () => {
     setIsTaskModalOpen(true);
   };
 
-  const handleSaveTask = (taskData: Partial<Task>) => {
+  const handleSaveTask = async (taskData: Partial<Task> & { addToCalendar?: boolean }) => {
+    const now = new Date().toISOString();
+
     if (editingTask) {
       const updated = tasks.map(t =>
         t.id === editingTask.id
           ? {
               ...t,
               ...taskData,
-              updatedAt: new Date().toISOString()
+              updatedAt: now
             }
           : t
       );
       persistTasks(updated);
-    } else {
-      const now = new Date().toISOString();
-      const newTask: Task = {
-        id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-        title: taskData.title || '',
-        description: taskData.description,
-        category: taskData.category || defaultCategoryForNew,
-        completed: false,
-        date: taskData.date || currentDate,
-        time: taskData.time,
-        durationMinutes: taskData.durationMinutes,
-        milestoneTitle: taskData.milestoneTitle,
-        link: taskData.link,
-        createdAt: now,
-        updatedAt: now
-      };
-      const updated = [newTask, ...tasks];
-      persistTasks(updated);
+      showToast('המשימה עודכנה בהצלחה', 'success');
+      return;
     }
+
+    // New task creation
+    const targetDate = taskData.date || currentDate;
+    const targetTitle = taskData.title?.trim() || 'משימה חדשה';
+
+    // If user checked "Add to Google Calendar"
+    if (taskData.addToCalendar) {
+      const token = getStoredToken();
+      if (token?.access_token) {
+        try {
+          const createdEvent = await createGoogleCalendarEvent(token.access_token, {
+            title: targetTitle,
+            date: targetDate,
+            time: taskData.time,
+            durationMinutes: taskData.durationMinutes,
+            description: taskData.description
+          });
+
+          const newGcalTask: Task = {
+            id: `gcal-${createdEvent.id}`,
+            title: targetTitle,
+            description: taskData.description,
+            category: 'must_do',
+            completed: false,
+            date: targetDate,
+            time: taskData.time,
+            durationMinutes: taskData.durationMinutes || (taskData.time ? 30 : undefined),
+            link: createdEvent.htmlLink || taskData.link,
+            createdAt: now,
+            updatedAt: now
+          };
+
+          const updated = [newGcalTask, ...tasks];
+          persistTasks(updated);
+          showToast(`המשימה נוספה בהצלחה ל-Must Do וסונכרנה ליומן Google! 📅`, 'success');
+          return;
+        } catch (err: any) {
+          console.error('Failed to create event in Google Calendar:', err);
+          showToast(`שגיאה בסנכרון ליומן Google: ${err.message || 'נסה שוב'}. המשימה נשמרה מקומית.`, 'error');
+        }
+      } else {
+        showToast('המשימה נוספה ל-Must Do (יש להתחבר ל-Google כדי לסנכרן אוטומטית ליומן) ℹ️', 'success');
+      }
+    }
+
+    // Standard task save
+    const newTask: Task = {
+      id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      title: targetTitle,
+      description: taskData.description,
+      category: taskData.category || defaultCategoryForNew,
+      completed: false,
+      date: targetDate,
+      time: taskData.time,
+      durationMinutes: taskData.durationMinutes,
+      milestoneTitle: taskData.milestoneTitle,
+      link: taskData.link,
+      createdAt: now,
+      updatedAt: now
+    };
+    const updated = [newTask, ...tasks];
+    persistTasks(updated);
+    showToast(`המשימה נוספה בהצלחה`, 'success');
   };
 
-  const handleSaveVoiceTask = (taskData: {
+  const handleSaveVoiceTask = async (taskData: {
     title: string;
     date: string;
     time?: string;
     category: 'must_do';
+    addToCalendar?: boolean;
   }) => {
     const now = new Date().toISOString();
+    const targetTitle = taskData.title.trim() || 'משימה קולית';
+    const targetDate = taskData.date || currentDate;
+
+    // If voice task requested calendar sync
+    if (taskData.addToCalendar) {
+      const token = getStoredToken();
+      if (token?.access_token) {
+        try {
+          const createdEvent = await createGoogleCalendarEvent(token.access_token, {
+            title: targetTitle,
+            date: targetDate,
+            time: taskData.time
+          });
+
+          const newGcalTask: Task = {
+            id: `gcal-${createdEvent.id}`,
+            title: targetTitle,
+            category: 'must_do',
+            completed: false,
+            date: targetDate,
+            time: taskData.time,
+            durationMinutes: taskData.time ? 30 : undefined,
+            link: createdEvent.htmlLink,
+            createdAt: now,
+            updatedAt: now
+          };
+
+          const updated = [newGcalTask, ...tasks];
+          persistTasks(updated);
+          showToast(
+            `משימה קולית נוצרה וסונכרנה ליומן Google לתאריך ${targetDate}${taskData.time ? ` בשעה ${taskData.time}` : ''}! 🎙️📅`,
+            'success'
+          );
+          return;
+        } catch (err: any) {
+          console.error('Failed to create voice event in Google Calendar:', err);
+          showToast(`שגיאה ביצירת אירוע ביומן: ${err.message || 'נשמר מקומית'}.`, 'error');
+        }
+      } else {
+        showToast('משימה קולית נשמרה ב-Must Do (התחבר/י ל-Google לסנכרון יומן) 🎙️', 'success');
+      }
+    }
+
+    // Standard voice task save
     const newTask: Task = {
       id: `voice-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      title: taskData.title,
+      title: targetTitle,
       category: 'must_do',
       completed: false,
-      date: taskData.date,
+      date: targetDate,
       time: taskData.time,
       createdAt: now,
       updatedAt: now
@@ -571,7 +665,7 @@ export const App: React.FC = () => {
     const updated = [newTask, ...tasks];
     persistTasks(updated);
     showToast(
-      `משימת Must Do קולית נוספה בהצלחה לתאריך ${taskData.date}${taskData.time ? ` בשעה ${taskData.time}` : ''}! 🎙️`,
+      `משימת Must Do קולית נוספה בהצלחה לתאריך ${targetDate}${taskData.time ? ` בשעה ${taskData.time}` : ''}! 🎙️`,
       'success'
     );
   };

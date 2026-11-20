@@ -6,6 +6,7 @@ export interface ParsedVoiceTask {
   time?: string; // HH:mm
   rawTranscript: string;
   dateLabel?: string;
+  addToCalendar?: boolean;
 }
 
 const HEBREW_HOURS_MAP: Record<string, number> = {
@@ -79,6 +80,10 @@ export function parseVoiceTask(raw: string, baseDateStr?: string): ParsedVoiceTa
   let matchedDate: string = realTodayStr;
   let dateLabel: string | undefined = undefined;
   let matchedTime: string | undefined = undefined;
+
+  // Calendar intent detection ("יומן", "פגישה", "אירוע", "לוח שנה")
+  const calendarIntentRegex = /(?:^|[\s,.:;!?"'()־-])(?:ב|ל)?(?:יומן|פגישה|אירוע|לוח\s*שנה|calendar)(?:$|[\s,.:;!?"'()־-])/i;
+  const addToCalendar = calendarIntentRegex.test(raw);
 
   // 1. EXTRACT DATE
   // Check "מחרתיים" (including "למחרתיים", "במחרתיים", "שמחרתיים")
@@ -253,11 +258,14 @@ export function parseVoiceTask(raw: string, baseDateStr?: string): ParsedVoiceTa
   // Clean leftovers of "בשעה", "שעה", "בתאריך", "ליום", "בתאריך", "לשעה"
   text = text.replace(/\b(?:בשעה|שעה|לשעה|בתאריך|ליום)\b/gi, ' ');
 
-  // Clean conversational prefixes: תזכיר לי, תוסיף משימה, להוסיף, לרשום, תרשום, משימה, קבע
+  // Clean conversational prefixes: תזכיר לי, תוסיף משימה, להוסיף, לרשום, תרשום, משימה, קבע, ליומן
   text = text.replace(
-    /^\s*(?:תזכיר לי|תזכרי לי|תוסיף לי|תוסיפי לי|תוסיף משימה|תוסיפי משימה|תוסיף|תוסיפי|להוסיף|לרשום|תרשום|תרשמי|משימה|תפתח משימה|קבע|לקבוע|יש לי)\s*(?:משימה|ש|את)?\s*/i,
+    /^\s*(?:תזכיר לי|תזכרי לי|תוסיף לי|תוסיפי לי|תוסיף משימה|תוסיפי משימה|תוסיף ליומן|תוסיפי ליומן|להוסיף ליומן|לרשום ביומן|תרשום ביומן|תרשמי ביומן|תוסיף|תוסיפי|להוסיף|לרשום|תרשום|תרשמי|משימה|תפתח משימה|קבע פגישה|לקבוע פגישה|קבע|לקבוע|תקבע|תקבעי|יש לי)\s*(?:משימה|ש|את|ליומן|ביומן)?\s*/i,
     ''
   );
+
+  // Clean standalone "ביומן" / "ליומן" / "יומן גוגל"
+  text = text.replace(/\b(?:ב|ל)?יומן(?:\s+גוגל)?\b/gi, ' ');
 
   // Clean trailing and leading dashes, colons, spaces
   text = text
@@ -267,7 +275,7 @@ export function parseVoiceTask(raw: string, baseDateStr?: string): ParsedVoiceTa
 
   // Fallback title if all words were parsed as dates/times
   if (!text) {
-    text = 'משימה קולית חדשה';
+    text = addToCalendar ? 'פגישה ביומן' : 'משימה קולית חדשה';
   }
 
   return {
@@ -275,6 +283,7 @@ export function parseVoiceTask(raw: string, baseDateStr?: string): ParsedVoiceTa
     date: matchedDate,
     time: matchedTime,
     rawTranscript: raw,
-    dateLabel
+    dateLabel,
+    addToCalendar
   };
 }

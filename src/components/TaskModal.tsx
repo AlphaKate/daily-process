@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Task, TaskCategory } from '../types';
-import { X, Link as LinkIcon, Milestone, AlertCircle, FileText, Clock } from 'lucide-react';
+import { X, Link as LinkIcon, Milestone, AlertCircle, FileText, Clock, Calendar } from 'lucide-react';
 import { scanTextForSensitiveData, DLPFinding } from '../services/dlpService';
 import { DLPWarningModal } from './DLPWarningModal';
 
@@ -10,7 +10,7 @@ interface TaskModalProps {
   defaultDate: string;
   defaultCategory?: TaskCategory;
   onClose: () => void;
-  onSave: (taskData: Partial<Task>) => void;
+  onSave: (taskData: Partial<Task> & { addToCalendar?: boolean }) => void;
 }
 
 const COMMON_MILESTONES = [
@@ -41,6 +41,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [milestoneTitle, setMilestoneTitle] = useState('');
   const [link, setLink] = useState('');
   const [error, setError] = useState('');
+  const [addToCalendar, setAddToCalendar] = useState<boolean>(false);
   const [dlpFindings, setDlpFindings] = useState<DLPFinding[]>([]);
   const [isDlpModalOpen, setIsDlpModalOpen] = useState(false);
 
@@ -54,6 +55,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setDurationMinutes(initialTask.durationMinutes ? String(initialTask.durationMinutes) : '');
       setMilestoneTitle(initialTask.milestoneTitle || '');
       setLink(initialTask.link || '');
+      setAddToCalendar(Boolean(initialTask.id.startsWith('gcal-')));
     } else {
       setTitle('');
       setDescription('');
@@ -63,6 +65,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setDurationMinutes('');
       setMilestoneTitle('');
       setLink('');
+      setAddToCalendar(false);
     }
     setError('');
   }, [initialTask, isOpen, defaultDate, defaultCategory]);
@@ -102,6 +105,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       milestoneTitle: milestoneTitle.trim() || undefined,
       link: link.trim() || undefined,
       goalDocumentId: resolvedGoalDocId,
+      addToCalendar
     });
     onClose();
   };
@@ -337,6 +341,27 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   ⏱️ {mins} דק׳
                 </button>
               ))}
+            </div>
+
+            {/* Google Calendar Sync Option */}
+            <div className="pt-1.5">
+              <label className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-850 border border-slate-200/90 dark:border-slate-700/80 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors select-none">
+                <input
+                  type="checkbox"
+                  checked={addToCalendar}
+                  onChange={(e) => setAddToCalendar(e.target.checked)}
+                  className="w-4 h-4 text-blue-600 rounded border-slate-300 dark:border-slate-600 focus:ring-blue-500 cursor-pointer"
+                />
+                <Calendar className="w-4 h-4 text-blue-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100 block">
+                    הוסף וסנכרן ליומן Google Calendar
+                  </span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
+                    ייצור אירוע מסונכרן ביומן Google ויתווסף ל-Must Do
+                  </span>
+                </div>
+              </label>
             </div>
           </div>
 
