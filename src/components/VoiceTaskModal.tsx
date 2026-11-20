@@ -127,17 +127,11 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
 
       recognition.onerror = (event: any) => {
         console.warn('Speech recognition error:', event.error);
-        const storedApproved = getStoredMicPermission();
         if (event.error === 'not-allowed') {
-          // If user previously approved, DO NOT revoke!
-          // iOS triggers not-allowed when backgrounded or when auto-start lacks user touch gesture.
-          if (!storedApproved) {
-            setIsMicPermitted(false);
-            setErrorMsg('גישה למיקרופון טרם אושרה. לחצי על "אשר ושמור גישה למיקרופון" למטה.');
-          } else {
-            setIsMicPermitted(true);
-            setErrorMsg(null);
-          }
+          // User chose Cancel or Safari denied access
+          setIsMicPermitted(false);
+          setStoredMicPermission(false);
+          setErrorMsg('הגישה למיקרופון בוטלה (Cancel). כדי להקליט, לחצי שוב על כפתור המיקרופון ובחרי "אפשר" (Allow).');
         } else if (event.error === 'no-speech' || event.error === 'aborted') {
           // Normal, silent timeout
         } else {
@@ -214,18 +208,10 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
 
     // Refresh stored permission status
     setIsMicPermitted(getStoredMicPermission());
+    setErrorMsg(null);
 
-    const recognition = setupRecognition();
-    if (recognition) {
-      // Auto-start listening on modal open
-      setTimeout(() => {
-        try {
-          recognition.start();
-        } catch (e) {
-          console.warn('Could not auto-start recognition:', e);
-        }
-      }, 150);
-    }
+    // Setup recognition instance ready for user interaction
+    setupRecognition();
 
     return () => {
       if (recognitionRef.current) {
@@ -391,7 +377,11 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
                     <span>מקשיב עכשיו... (דברי חופשי)</span>
                   </>
                 ) : (
-                  <span>ההקלטה נעצרה. לחצי על המיקרופון כדי להקליט שוב</span>
+                  <span>
+                    {transcript || interimTranscript
+                      ? 'ההקלטה נעצרה. לחצי על המיקרופון כדי להקליט שוב'
+                      : 'לחצי על המיקרופון כדי להתחיל להקליט 🎙️'}
+                  </span>
                 )}
               </span>
             </div>
@@ -413,6 +403,11 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
                   <span>אשר ושמור גישה למיקרופון באייפון זה</span>
                 </button>
               )}
+            </div>
+
+            {/* iOS Safari Permanent Permission Tip */}
+            <div className="mt-2.5 p-2 rounded-xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/50 text-[11px] text-slate-500 dark:text-slate-400 max-w-sm text-center leading-relaxed">
+              💡 <strong>למניעת שאלות חוזרות באייפון:</strong> בשורת הכתובת ב-Safari לחצי על <strong>aA</strong> &gt; <strong>הגדרות אתר</strong> &gt; <strong>מיקרופון</strong> &gt; בחרי <strong>'אפשר'</strong> (Allow).
             </div>
 
             {/* Hint examples */}
