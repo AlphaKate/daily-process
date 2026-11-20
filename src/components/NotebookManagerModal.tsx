@@ -18,7 +18,13 @@ import {
   Loader2,
   Calendar,
   CalendarDays,
-  Inbox
+  Inbox,
+  CheckSquare,
+  Square,
+  Filter,
+  TrendingUp,
+  Sparkles,
+  FastForward
 } from 'lucide-react';
 import {
   LearningNotebook,
@@ -158,6 +164,11 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
   // Transient feedback toast inside modal
   const [stageToast, setStageToast] = useState<{ stageId: string; message: string } | null>(null);
 
+  // Tab 2 View Filter & Multi-Select Batch State
+  const [stageFilter, setStageFilter] = useState<'all' | 'today' | 'backlog' | 'unassigned' | 'completed'>('all');
+  const [stageSearchQuery, setStageSearchQuery] = useState('');
+  const [selectedStageIds, setSelectedStageIds] = useState<string[]>([]);
+
   if (!isOpen) return null;
 
   const selectedNotebook = notebooks.find(n => n.id === selectedNotebookId) || notebooks[0];
@@ -277,6 +288,125 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
       onScheduleStage(newTasks);
       setShowTab2Distributor(false);
     }
+  };
+
+  // Shift uncompleted future/today stages forward by 1 practice day
+  const handleShiftUncompletedStagesForward = (notebook: LearningNotebook) => {
+    if (!notebook.stages || notebook.stages.length === 0) return;
+
+    const notebookTasks = allTasks.filter(
+      t => !t.isDeleted && !t.completed && t.date && t.date !== 'backlog' && (
+        t.milestoneTitle === (notebook.milestoneTitle || notebook.title) ||
+        notebook.stages.some(s => s.title.trim().toLowerCase() === t.title.trim().toLowerCase())
+      )
+    );
+
+    if (notebookTasks.length === 0) {
+      setStageToast({ stageId: 'batch', message: 'לא נמצאו משימות עתידיות להזזה' });
+      setTimeout(() => setStageToast(null), 3000);
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const updatedTasks: Task[] = notebookTasks.map(t => {
+      const [y, m, d] = t.date.split('-').map(Number);
+      const cur = new Date(y, m - 1, d);
+      let safety = 0;
+      do {
+        cur.setDate(cur.getDate() + 1);
+        safety++;
+      } while (!tab2PracticeDays.includes(cur.getDay()) && safety < 14);
+
+      const nextDate = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
+      return {
+        ...t,
+        date: nextDate,
+        updatedAt: now
+      };
+    });
+
+    onScheduleStage(updatedTasks);
+    setStageToast({
+      stageId: 'batch',
+      message: `הוזזו ${updatedTasks.length} שלבים שלא הושלמו ביום תרגול אחד קדימה ⏩`
+    });
+    setTimeout(() => setStageToast(null), 3000);
+  };
+
+  // Batch schedule selected stages to a target date
+  const handleBatchSchedule = (targetDate: string) => {
+    if (selectedStageIds.length === 0 || !selectedNotebook) return;
+    const stagesToSchedule = selectedNotebook.stages.filter(s => selectedStageIds.includes(s.id));
+    const now = new Date().toISOString();
+    const tasksToSave: Task[] = [];
+
+    stagesToSchedule.forEach(stage => {
+      const existing = allTasks.find(
+        t => !t.isDeleted && t.title.trim().toLowerCase() === stage.title.trim().toLowerCase()
+      );
+      tasksToSave.push(existing ? { ...existing, date: targetDate, updatedAt: now } : {
+        id: `nb-task-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        title: stage.title,
+        description: stage.description,
+        category: 'goals',
+        completed: false,
+        date: targetDate,
+        durationMinutes: stage.durationMinutes || 20,
+        milestoneTitle: selectedNotebook.milestoneTitle || selectedNotebook.title,
+        link: selectedNotebook.url,
+        createdAt: now,
+        updatedAt: now
+      });
+    });
+
+    onScheduleStage(tasksToSave);
+    setSelectedStageIds([]);
+    setStageToast({
+      stageId: 'batch',
+      message: `${stagesToSchedule.length} שלבים נבחרו והועברו ל-${targetDate === 'backlog' ? 'בנק היעדים' : targetDate === currentDate ? 'היום' : formatHebrewDateDisplay(targetDate)} ✓`
+    });
+    setTimeout(() => setStageToast(null), 3000);
+  };
+
+  // Batch distribute selected stages across the week
+  const handleBatchDistribute = () => {
+    if (selectedStageIds.length === 0 || !selectedNotebook) return;
+    const stagesToSchedule = selectedNotebook.stages.filter(s => selectedStageIds.includes(s.id));
+    const dates = calculateDistributedDates(
+      stagesToSchedule.length,
+      tab2StartDate || currentDate,
+      tab2PracticeDays
+    );
+    const now = new Date().toISOString();
+    const tasksToSave: Task[] = [];
+
+    stagesToSchedule.forEach((stage, idx) => {
+      const targetDate = dates[idx] || currentDate;
+      const existing = allTasks.find(
+        t => !t.isDeleted && t.title.trim().toLowerCase() === stage.title.trim().toLowerCase()
+      );
+      tasksToSave.push(existing ? { ...existing, date: targetDate, updatedAt: now } : {
+        id: `nb-task-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 4)}`,
+        title: stage.title,
+        description: stage.description,
+        category: 'goals',
+        completed: false,
+        date: targetDate,
+        durationMinutes: stage.durationMinutes || 20,
+        milestoneTitle: selectedNotebook.milestoneTitle || selectedNotebook.title,
+        link: selectedNotebook.url,
+        createdAt: now,
+        updatedAt: now
+      });
+    });
+
+    onScheduleStage(tasksToSave);
+    setSelectedStageIds([]);
+    setStageToast({
+      stageId: 'batch',
+      message: `${stagesToSchedule.length} שלבים פוזרו לאורך השבוע בהצלחה ✓`
+    });
+    setTimeout(() => setStageToast(null), 3000);
   };
 
   // 1. Open NotebookLM to pick a notebook
@@ -801,350 +931,665 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
           {/* ======================================================== */}
           {/* TAB 2: VIEW & EDIT STAGES OF SELECTED NOTEBOOK */}
           {/* ======================================================== */}
-          {activeTab === 'view_edit' && selectedNotebook && (
-            <div className="space-y-4">
-              {/* Selected Notebook Top Banner */}
-              <div className="p-4 bg-purple-50/70 dark:bg-purple-950/30 rounded-2xl border border-purple-200/80 dark:border-purple-800/60 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-md">
-                    <Brain className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-                        {selectedNotebook.title}
-                      </h3>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-200 dark:bg-purple-900 text-purple-800 dark:text-purple-200">
-                        {selectedNotebook.stages.length} שלבים
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                      אבן דרך: <strong>{selectedNotebook.milestoneTitle}</strong> • לחצי על <strong>"שבץ להיום"</strong> לשילוב שלב זה בסדר היום הנוכחי
-                    </p>
-                  </div>
-                </div>
+          {activeTab === 'view_edit' && selectedNotebook && (() => {
+            const stages = selectedNotebook.stages;
+            const completedStages = stages.filter(s => isStageCompleted(s.title));
+            const todayStages = stages.filter(s => isStageScheduledForDate(s.title, currentDate));
+            const backlogStages = stages.filter(s => getStageScheduledDate(s.title) === 'backlog');
+            const unassignedStages = stages.filter(s => {
+              const d = getStageScheduledDate(s.title);
+              return !d && !isStageCompleted(s.title);
+            });
+            const progressPercent = stages.length > 0 ? Math.round((completedStages.length / stages.length) * 100) : 0;
+            const nextStageToLearn = stages.find(s => !isStageCompleted(s.title) && !isStageScheduledForDate(s.title, currentDate));
 
-                <div className="flex items-center gap-2">
-                  <a
-                    href={selectedNotebook.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 font-bold text-xs flex items-center gap-1.5 shadow-2xs hover:bg-purple-50 transition-colors"
-                  >
-                    <span>פתח מחברת ב-NotebookLM ↗</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              </div>
+            const filteredStages = stages.filter(stg => {
+              if (stageSearchQuery.trim()) {
+                const q = stageSearchQuery.toLowerCase();
+                const matchTitle = stg.title.toLowerCase().includes(q);
+                const matchDesc = stg.description?.toLowerCase().includes(q);
+                if (!matchTitle && !matchDesc) return false;
+              }
+              if (stageFilter === 'today') return isStageScheduledForDate(stg.title, currentDate);
+              if (stageFilter === 'backlog') return getStageScheduledDate(stg.title) === 'backlog';
+              if (stageFilter === 'unassigned') return !getStageScheduledDate(stg.title) && !isStageCompleted(stg.title);
+              if (stageFilter === 'completed') return isStageCompleted(stg.title);
+              return true;
+            });
 
-              {/* Quick Bulk Distribution Toolbar for Existing Notebook */}
-              <div className="p-3 bg-gradient-to-r from-purple-50/70 to-indigo-50/70 dark:from-purple-950/40 dark:to-indigo-950/40 rounded-2xl border border-purple-200/80 dark:border-purple-800/50 space-y-2.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
-                    <CalendarDays className="w-4 h-4 text-purple-600" />
-                    <span>פיזור ושיבוץ מהיר של שלבי המחברת:</span>
-                  </div>
+            const isAllFilteredSelected = filteredStages.length > 0 && filteredStages.every(s => selectedStageIds.includes(s.id));
 
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowTab2Distributor(prev => !prev)}
-                      className="px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
-                    >
-                      <CalendarDays className="w-3.5 h-3.5" />
-                      <span>{showTab2Distributor ? 'סגור הגדרות פיזור' : 'פזר לאורך השבוע 📅'}</span>
-                    </button>
+            const toggleSelectAllFiltered = () => {
+              if (isAllFilteredSelected) {
+                setSelectedStageIds(prev => prev.filter(id => !filteredStages.some(s => s.id === id)));
+              } else {
+                const newIds = Array.from(new Set([...selectedStageIds, ...filteredStages.map(s => s.id)]));
+                setSelectedStageIds(newIds);
+              }
+            };
 
-                    <button
-                      type="button"
-                      onClick={() => handleBulkDistributeNotebookStages(selectedNotebook, 'backlog')}
-                      className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
-                    >
-                      <Inbox className="w-3.5 h-3.5 text-purple-600" />
-                      <span>העבר הכל לבנק היעדים 📥</span>
-                    </button>
-                  </div>
-                </div>
+            const toggleStageSelect = (stageId: string) => {
+              setSelectedStageIds(prev =>
+                prev.includes(stageId) ? prev.filter(id => id !== stageId) : [...prev, stageId]
+              );
+            };
 
-                {showTab2Distributor && (
-                  <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-purple-200 dark:border-purple-800 space-y-2.5 animate-in fade-in duration-150 text-xs">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-bold text-slate-700 dark:text-slate-300">
-                        כמה ימים בשבוע מתוכנן התרגול?
-                      </span>
-                      <div className="flex items-center gap-1">
-                        <span className="text-[11px] text-slate-400">החל מתאריך:</span>
-                        <input
-                          type="date"
-                          value={tab2StartDate}
-                          onChange={(e) => setTab2StartDate(e.target.value)}
-                          className="px-2 py-1 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 font-semibold focus:outline-none"
-                        />
+            return (
+              <div className="space-y-4">
+                {/* Selected Notebook Top Banner with Progress Bar */}
+                <div className="p-4 bg-purple-50/70 dark:bg-purple-950/30 rounded-2xl border border-purple-200/80 dark:border-purple-800/60 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                        <Brain className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                            {selectedNotebook.title}
+                          </h3>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-200 dark:bg-purple-900 text-purple-800 dark:text-purple-200">
+                            {selectedNotebook.stages.length} שלבים
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                          אבן דרך: <strong>{selectedNotebook.milestoneTitle}</strong>
+                        </p>
                       </div>
                     </div>
 
-                    {/* Preset pills */}
-                    <div className="flex flex-wrap gap-1.5">
-                      {PRESETS.map((p) => {
-                        const isSelected =
-                          tab2PracticeDays.length === p.days.length &&
-                          p.days.every(d => tab2PracticeDays.includes(d));
-                        return (
-                          <button
-                            key={p.label}
-                            type="button"
-                            onClick={() => setTab2PracticeDays(p.days)}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
-                              isSelected
-                                ? 'bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-200 border-purple-300 dark:border-purple-700 font-bold'
-                                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                            }`}
-                          >
-                            {p.label}
-                          </button>
-                        );
-                      })}
+                    <div className="flex items-center gap-2">
+                      <a
+                        href={selectedNotebook.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 font-bold text-xs flex items-center gap-1.5 shadow-2xs hover:bg-purple-50 transition-colors"
+                      >
+                        <span>פתח ב-NotebookLM ↗</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Progress Tracker Bar */}
+                  <div className="pt-2 border-t border-purple-200/60 dark:border-purple-800/60">
+                    <div className="flex items-center justify-between text-xs mb-1.5">
+                      <span className="font-bold text-purple-950 dark:text-purple-200 flex items-center gap-1">
+                        <TrendingUp className="w-3.5 h-3.5 text-purple-600" />
+                        <span>התקדמות בתוכנית הלמידה:</span>
+                      </span>
+                      <span className="font-extrabold text-purple-700 dark:text-purple-300">
+                        {completedStages.length} מתוך {stages.length} הושלמו ({progressPercent}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 bg-purple-200/60 dark:bg-purple-900/60 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 rounded-full transition-all duration-500"
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Featured: Next Upcoming Stage to Learn */}
+                {nextStageToLearn && (
+                  <div className="p-3 bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-purple-500/10 dark:from-emerald-950/40 dark:to-purple-950/40 rounded-2xl border border-emerald-300/80 dark:border-emerald-700/60 flex flex-wrap items-center justify-between gap-2.5 shadow-2xs">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <span className="p-2 rounded-xl bg-emerald-600 text-white shrink-0 shadow-xs">
+                        <Sparkles className="w-4 h-4" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-extrabold text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+                          <span>🎯 השלב הבא בתור לתרגול:</span>
+                        </div>
+                        <div className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate mt-0.5">
+                          {nextStageToLearn.title}
+                          {nextStageToLearn.durationMinutes && (
+                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold mr-1.5">
+                              ({nextStageToLearn.durationMinutes} דק׳)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleScheduleStage(selectedNotebook, nextStageToLearn, currentDate)}
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                    >
+                      <ArrowDownToLine className="w-3.5 h-3.5" />
+                      <span>שבץ להיום 🚀</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Quick Distribution & Auto-Schedule Toolbar */}
+                <div className="p-3 bg-gradient-to-r from-purple-50/70 to-indigo-50/70 dark:from-purple-950/40 dark:to-indigo-950/40 rounded-2xl border border-purple-200/80 dark:border-purple-800/50 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
+                      <CalendarDays className="w-4 h-4 text-purple-600" />
+                      <span>פיזור ועדכון אוטומטי של התוכנית:</span>
                     </div>
 
-                    {/* Day toggles */}
-                    <div className="flex items-center gap-1 pt-1">
-                      <span className="text-[11px] text-slate-400 shrink-0 ml-1">ימי השבוע:</span>
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {DAYS_OF_WEEK.map(({ day, label, name }) => {
-                          const active = tab2PracticeDays.includes(day);
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setShowTab2Distributor(prev => !prev)}
+                        className="px-2.5 py-1 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                      >
+                        <CalendarDays className="w-3.5 h-3.5" />
+                        <span>{showTab2Distributor ? 'סגור הגדרות פיזור' : 'פזר לאורך השבוע 📅'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleBulkDistributeNotebookStages(selectedNotebook, 'backlog')}
+                        className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                        title="העבר את כל השלבים שטרם הושלמו לבנק היעדים"
+                      >
+                        <Inbox className="w-3.5 h-3.5 text-purple-600" />
+                        <span>העבר הכל לבנק 📥</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleShiftUncompletedStagesForward(selectedNotebook)}
+                        className="px-2.5 py-1 rounded-xl bg-indigo-100 dark:bg-indigo-950/60 hover:bg-indigo-200 text-indigo-800 dark:text-indigo-200 font-bold text-xs flex items-center gap-1 border border-indigo-200 dark:border-indigo-800 transition-colors cursor-pointer"
+                        title="דחיית כל השלבים העתידיים שטרם בוצעו ביום תרגול אחד קדימה"
+                      >
+                        <FastForward className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>דחה שלבים (+1 יום) ⏩</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {showTab2Distributor && (
+                    <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-purple-200 dark:border-purple-800 space-y-2.5 animate-in fade-in duration-150 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-bold text-slate-700 dark:text-slate-300">
+                          כמה ימים בשבוע מתוכנן התרגול?
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] text-slate-400">החל מתאריך:</span>
+                          <input
+                            type="date"
+                            value={tab2StartDate}
+                            onChange={(e) => setTab2StartDate(e.target.value)}
+                            className="px-2 py-1 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 font-semibold focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Preset pills */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {PRESETS.map((p) => {
+                          const isSelected =
+                            tab2PracticeDays.length === p.days.length &&
+                            p.days.every(d => tab2PracticeDays.includes(d));
                           return (
                             <button
-                              key={day}
+                              key={p.label}
                               type="button"
-                              onClick={() => {
-                                if (active) {
-                                  if (tab2PracticeDays.length > 1) {
-                                    setTab2PracticeDays(tab2PracticeDays.filter(d => d !== day));
-                                  }
-                                } else {
-                                  setTab2PracticeDays([...tab2PracticeDays, day].sort());
-                                }
-                              }}
-                              className={`w-7 h-7 rounded-xl text-xs font-bold flex items-center justify-center transition-all cursor-pointer ${
-                                active
-                                  ? 'bg-purple-600 text-white shadow-xs'
-                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200'
+                              onClick={() => setTab2PracticeDays(p.days)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-200 border-purple-300 dark:border-purple-700 font-bold'
+                                  : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
                               }`}
-                              title={`יום ${name}`}
                             >
-                              {label}
+                              {p.label}
                             </button>
                           );
                         })}
                       </div>
-                      <span className="text-[11px] text-purple-600 dark:text-purple-400 font-bold mr-2">
-                        ({tab2PracticeDays.length} ימים בשבוע)
+
+                      {/* Day toggles */}
+                      <div className="flex items-center gap-1 pt-1 flex-wrap">
+                        <span className="text-[11px] text-slate-400 shrink-0 ml-1">ימי השבוע:</span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {DAYS_OF_WEEK.map(({ day, label, name }) => {
+                            const active = tab2PracticeDays.includes(day);
+                            return (
+                              <button
+                                key={day}
+                                type="button"
+                                onClick={() => {
+                                  if (active) {
+                                    if (tab2PracticeDays.length > 1) {
+                                      setTab2PracticeDays(tab2PracticeDays.filter(d => d !== day));
+                                    }
+                                  } else {
+                                    setTab2PracticeDays([...tab2PracticeDays, day].sort());
+                                  }
+                                }}
+                                className={`w-7 h-7 rounded-xl text-xs font-bold flex items-center justify-center transition-all cursor-pointer ${
+                                  active
+                                    ? 'bg-purple-600 text-white shadow-xs'
+                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-200'
+                                }`}
+                                title={`יום ${name}`}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <span className="text-[11px] text-purple-600 dark:text-purple-400 font-bold mr-2">
+                          ({tab2PracticeDays.length} ימים בשבוע)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleBulkDistributeNotebookStages(selectedNotebook, 'spread')}
+                          className="mr-auto px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+                        >
+                          החל פיזור כעת 🚀
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* View Filter Pills & Search */}
+                <div className="p-3 bg-white dark:bg-slate-850 rounded-2xl border border-slate-200/90 dark:border-slate-800 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    {/* Filter Pills */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[11px] text-slate-400 font-bold flex items-center gap-1">
+                        <Filter className="w-3 h-3 text-purple-600" />
+                        <span>הצג:</span>
                       </span>
+
                       <button
                         type="button"
-                        onClick={() => handleBulkDistributeNotebookStages(selectedNotebook, 'spread')}
-                        className="mr-auto px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+                        onClick={() => setStageFilter('all')}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          stageFilter === 'all'
+                            ? 'bg-purple-600 text-white shadow-2xs'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                        }`}
                       >
-                        החל פיזור כעת 🚀
+                        הכל ({stages.length})
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setStageFilter('today')}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                          stageFilter === 'today'
+                            ? 'bg-purple-600 text-white shadow-2xs'
+                            : 'bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 hover:bg-purple-100'
+                        }`}
+                        title="הצג רק שלבים שמשובצים להיום"
+                      >
+                        <span>📅 להיום ({todayStages.length})</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setStageFilter('backlog')}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          stageFilter === 'backlog'
+                            ? 'bg-amber-500 text-white shadow-2xs'
+                            : 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 hover:bg-amber-100'
+                        }`}
+                      >
+                        בבנק ({backlogStages.length})
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setStageFilter('unassigned')}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          stageFilter === 'unassigned'
+                            ? 'bg-slate-700 text-white shadow-2xs'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                        }`}
+                      >
+                        ממתינים ({unassignedStages.length})
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setStageFilter('completed')}
+                        className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                          stageFilter === 'completed'
+                            ? 'bg-emerald-600 text-white shadow-2xs'
+                            : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
+                        }`}
+                      >
+                        הושלמו ({completedStages.length})
+                      </button>
+                    </div>
+
+                    {/* Search Input */}
+                    <div className="relative min-w-[150px] flex-1 sm:flex-initial">
+                      <Search className="w-3 h-3 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={stageSearchQuery}
+                        onChange={(e) => setStageSearchQuery(e.target.value)}
+                        placeholder="חיפוש שלב..."
+                        className="w-full pr-7 pl-2 py-1 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Multi-Select Toolbar Header */}
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800 text-xs">
+                    <button
+                      type="button"
+                      onClick={toggleSelectAllFiltered}
+                      className="flex items-center gap-1.5 text-slate-600 dark:text-slate-400 hover:text-purple-600 font-semibold cursor-pointer"
+                    >
+                      {isAllFilteredSelected ? (
+                        <CheckSquare className="w-4 h-4 text-purple-600" />
+                      ) : (
+                        <Square className="w-4 h-4 text-slate-400" />
+                      )}
+                      <span>{isAllFilteredSelected ? 'בטל בחירת הכל' : 'בחר את כל המוצגים'}</span>
+                    </button>
+
+                    {selectedStageIds.length > 0 && (
+                      <span className="text-[11px] font-bold text-purple-700 dark:text-purple-300">
+                        נבחרו {selectedStageIds.length} שלבים לפעולה מרוכזת
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Batch Actions Sticky Bar (appears when 1 or more stages selected) */}
+                {selectedStageIds.length > 0 && (
+                  <div className="p-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-2xl shadow-lg flex flex-wrap items-center justify-between gap-2.5 animate-in slide-in-from-top-2 duration-150">
+                    <div className="flex items-center gap-2 font-extrabold text-xs">
+                      <CheckSquare className="w-4 h-4" />
+                      <span>פעולות מרוכזות על {selectedStageIds.length} שלבים שנבחרו:</span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap mr-auto">
+                      <button
+                        type="button"
+                        onClick={() => handleBatchSchedule(currentDate)}
+                        className="px-2.5 py-1 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs transition-colors cursor-pointer"
+                        title="שבץ את כל הנבחרים להיום"
+                      >
+                        שבץ להיום 🚀
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleBatchSchedule('backlog')}
+                        className="px-2.5 py-1 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs transition-colors cursor-pointer"
+                        title="העבר את כל הנבחרים לבנק היעדים"
+                      >
+                        העבר לבנק 📥
+                      </button>
+
+                      <label
+                        className="relative px-2.5 py-1 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                        title="שבץ את כל הנבחרים לתאריך ספציפי"
+                      >
+                        <Calendar className="w-3 h-3 text-white" />
+                        <span>שבץ ליום...</span>
+                        <input
+                          type="date"
+                          className="absolute inset-0 opacity-0 cursor-pointer"
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleBatchSchedule(e.target.value);
+                            }
+                          }}
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={handleBatchDistribute}
+                        className="px-2.5 py-1 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs transition-colors cursor-pointer"
+                        title="פזר את כל הנבחרים לאורך השבוע"
+                      >
+                        פזר לאורך השבוע 📅
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSelectedStageIds([])}
+                        className="px-2.5 py-1 rounded-xl bg-black/20 hover:bg-black/30 text-white/90 text-xs font-semibold cursor-pointer"
+                      >
+                        ביטול בחירה
                       </button>
                     </div>
                   </div>
                 )}
-              </div>
 
-              {/* Stages List */}
-              <div className="space-y-2.5">
-                {selectedNotebook.stages.map((stage, idx) => {
-                  const isScheduledToday = isStageScheduledForDate(stage.title, currentDate);
-                  const scheduledDate = getStageScheduledDate(stage.title);
-                  const isDone = isStageCompleted(stage.title);
-                  const isEditingThis = editingStageId === stage.id;
-
-                  return (
-                    <div
-                      key={stage.id}
-                      className={`p-3 bg-white dark:bg-slate-850 rounded-2xl border transition-all ${
-                        isScheduledToday
-                          ? 'border-purple-400 dark:border-purple-600 ring-1 ring-purple-500/30 bg-purple-50/20'
-                          : 'border-slate-200/90 dark:border-slate-800 hover:border-purple-300'
-                      }`}
-                    >
-                      {isEditingThis ? (
-                        /* Edit Stage Form */
-                        <div className="space-y-2 text-xs">
-                          <input
-                            type="text"
-                            value={editStageTitle}
-                            onChange={(e) => setEditStageTitle(e.target.value)}
-                            className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-purple-400 rounded-xl font-bold dark:text-white"
-                          />
-                          <textarea
-                            value={editStageDesc}
-                            onChange={(e) => setEditStageDesc(e.target.value)}
-                            rows={2}
-                            placeholder="תיאור והנחיות לתרגול..."
-                            className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl dark:text-white"
-                          />
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1 text-xs">
-                              <span>משך זמן (דקות):</span>
-                              <input
-                                type="number"
-                                value={editStageDuration}
-                                onChange={(e) => setEditStageDuration(parseInt(e.target.value, 10) || 20)}
-                                className="w-16 px-2 py-1 bg-slate-50 dark:bg-slate-900 border rounded-lg"
-                              />
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => setEditingStageId(null)}
-                                className="px-2.5 py-1 text-slate-500 hover:bg-slate-100 rounded-lg"
-                              >
-                                ביטול
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleSaveStageEdit(stage.id)}
-                                className="px-3 py-1 bg-emerald-600 text-white font-bold rounded-lg"
-                              >
-                                שמור שינויים
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        /* View Stage Item */
-                        <div className="space-y-2.5">
-                          {/* Top row: Stage number, Title, Badges */}
-                          <div className="flex items-start gap-2.5">
-                            <span className="w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
-                              {idx + 1}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center flex-wrap gap-1.5">
-                                <h4 className={`text-xs sm:text-sm font-bold ${isDone ? 'line-through text-slate-400' : 'text-slate-900 dark:text-white'}`}>
-                                  {stage.title}
-                                </h4>
-                                {stage.durationMinutes && (
-                                  <span className="text-[10px] text-amber-700 dark:text-amber-300 font-semibold bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-800">
-                                    ⏱️ {stage.durationMinutes} דק׳
-                                  </span>
-                                )}
-                                {scheduledDate === 'backlog' && (
-                                  <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
-                                    בבנק היעדים ✓
-                                  </span>
-                                )}
-                                {isScheduledToday && (
-                                  <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800">
-                                    מתוכנן להיום ✓
-                                  </span>
-                                )}
-                                {scheduledDate && scheduledDate !== currentDate && scheduledDate !== 'backlog' && (
-                                  <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800">
-                                    משובץ ל-{formatHebrewDateDisplay(scheduledDate)} ✓
-                                  </span>
-                                )}
-                                {isDone && (
-                                  <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300">
-                                    הושלם ✓
-                                  </span>
-                                )}
-                                {stageToast?.stageId === stage.id && (
-                                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-600 text-white animate-pulse shadow-xs">
-                                    {stageToast.message}
-                                  </span>
-                                )}
-                              </div>
-                              {stage.description && (
-                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 whitespace-pre-wrap">
-                                  {stage.description}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Scheduling & Actions Bottom Bar */}
-                          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-1.5 flex-wrap">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <button
-                                type="button"
-                                onClick={() => handleScheduleStage(selectedNotebook, stage, currentDate)}
-                                className={`px-2.5 py-1 rounded-xl font-bold text-xs shadow-2xs transition-all flex items-center gap-1 cursor-pointer ${
-                                  isScheduledToday
-                                    ? 'bg-purple-700 text-white'
-                                    : 'bg-purple-600 hover:bg-purple-700 text-white'
-                                }`}
-                                title="הוסף שלב זה לתוכנית של היום"
-                              >
-                                <ArrowDownToLine className="w-3 h-3" />
-                                <span>{isScheduledToday ? 'שבץ שוב' : 'להיום'}</span>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => handleScheduleStage(selectedNotebook, stage, 'backlog')}
-                                className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                                  scheduledDate === 'backlog'
-                                    ? 'bg-amber-500 text-white shadow-2xs ring-1 ring-amber-400'
-                                    : 'bg-slate-100 dark:bg-slate-800 hover:bg-amber-100 dark:hover:bg-amber-950/60 text-slate-700 dark:text-slate-300 hover:text-amber-800'
-                                }`}
-                                title="העבר שלב זה לבנק היעדים"
-                              >
-                                <Inbox className="w-3 h-3" />
-                                <span>לבנק</span>
-                              </button>
-
-                              <label
-                                className="relative px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-purple-50 dark:hover:bg-purple-950/60 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-                                title="שבץ שלב זה ליום ספציפי"
-                              >
-                                <Calendar className="w-3 h-3 text-purple-600" />
-                                <span>ליום...</span>
-                                <input
-                                  type="date"
-                                  className="absolute inset-0 opacity-0 cursor-pointer"
-                                  onChange={(e) => {
-                                    if (e.target.value) {
-                                      handleScheduleStage(selectedNotebook, stage, e.target.value);
-                                    }
-                                  }}
-                                />
-                              </label>
-                            </div>
-
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingStageId(stage.id);
-                                  setEditStageTitle(stage.title);
-                                  setEditStageDesc(stage.description || '');
-                                  setEditStageDuration(stage.durationMinutes || 20);
-                                }}
-                                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                                title="ערוך שלב"
-                              >
-                                <Edit2 className="w-3.5 h-3.5" />
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteStage(stage.id)}
-                                className="p-1.5 text-slate-300 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                                title="מחק שלב"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
+                {/* Stages List */}
+                <div className="space-y-2.5">
+                  {filteredStages.length === 0 ? (
+                    <div className="p-8 text-center bg-white dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-500 text-xs space-y-2">
+                      <p className="font-bold">לא נמצאו שלבים התואמים את הסינון הנוכחי.</p>
+                      {stageFilter !== 'all' && (
+                        <button
+                          type="button"
+                          onClick={() => setStageFilter('all')}
+                          className="px-3 py-1 bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-bold rounded-xl text-xs cursor-pointer"
+                        >
+                          הצג את כל {stages.length} השלבים
+                        </button>
                       )}
                     </div>
-                  );
-                })}
-              </div>
+                  ) : (
+                    filteredStages.map((stage, idx) => {
+                      const isScheduledToday = isStageScheduledForDate(stage.title, currentDate);
+                      const scheduledDate = getStageScheduledDate(stage.title);
+                      const isDone = isStageCompleted(stage.title);
+                      const isEditingThis = editingStageId === stage.id;
+                      const isSelected = selectedStageIds.includes(stage.id);
+
+                      return (
+                        <div
+                          key={stage.id}
+                          className={`p-3 bg-white dark:bg-slate-850 rounded-2xl border transition-all ${
+                            isSelected
+                              ? 'border-purple-600 ring-2 ring-purple-500/40 bg-purple-50/30'
+                              : isScheduledToday
+                              ? 'border-purple-400 dark:border-purple-600 ring-1 ring-purple-500/30 bg-purple-50/20'
+                              : scheduledDate === 'backlog'
+                              ? 'border-amber-300 dark:border-amber-700/60 bg-amber-50/15'
+                              : 'border-slate-200/90 dark:border-slate-800 hover:border-purple-300'
+                          }`}
+                        >
+                          {isEditingThis ? (
+                            /* Edit Stage Form */
+                            <div className="space-y-2 text-xs">
+                              <input
+                                type="text"
+                                value={editStageTitle}
+                                onChange={(e) => setEditStageTitle(e.target.value)}
+                                className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-purple-400 rounded-xl font-bold dark:text-white"
+                              />
+                              <textarea
+                                value={editStageDesc}
+                                onChange={(e) => setEditStageDesc(e.target.value)}
+                                rows={2}
+                                placeholder="תיאור והנחיות לתרגול..."
+                                className="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl dark:text-white"
+                              />
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1 text-xs">
+                                  <span>משך זמן (דקות):</span>
+                                  <input
+                                    type="number"
+                                    value={editStageDuration}
+                                    onChange={(e) => setEditStageDuration(parseInt(e.target.value, 10) || 20)}
+                                    className="w-16 px-2 py-1 bg-slate-50 dark:bg-slate-900 border rounded-lg"
+                                  />
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingStageId(null)}
+                                    className="px-2.5 py-1 text-slate-500 hover:bg-slate-100 rounded-lg"
+                                  >
+                                    ביטול
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveStageEdit(stage.id)}
+                                    className="px-3 py-1 bg-emerald-600 text-white font-bold rounded-lg"
+                                  >
+                                    שמור שינויים
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            /* View Stage Item */
+                            <div className="space-y-2.5">
+                              {/* Top row: Checkbox, Stage number, Title, Badges */}
+                              <div className="flex items-start gap-2.5">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleStageSelect(stage.id)}
+                                  className="mt-0.5 text-slate-400 hover:text-purple-600 cursor-pointer shrink-0"
+                                  title="בחר שלב זה לפעולה מרוכזת"
+                                >
+                                  {isSelected ? (
+                                    <CheckSquare className="w-4 h-4 text-purple-600" />
+                                  ) : (
+                                    <Square className="w-4 h-4 text-slate-300 hover:text-slate-500" />
+                                  )}
+                                </button>
+
+                                <span className="w-6 h-6 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                                  {idx + 1}
+                                </span>
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center flex-wrap gap-1.5">
+                                    <h4 className={`text-xs sm:text-sm font-bold ${isDone ? 'line-through text-slate-400' : 'text-slate-900 dark:text-white'}`}>
+                                      {stage.title}
+                                    </h4>
+                                    {stage.durationMinutes && (
+                                      <span className="text-[10px] text-amber-700 dark:text-amber-300 font-semibold bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-800">
+                                        ⏱️ {stage.durationMinutes} דק׳
+                                      </span>
+                                    )}
+                                    {scheduledDate === 'backlog' && (
+                                      <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
+                                        בבנק היעדים ✓
+                                      </span>
+                                    )}
+                                    {isScheduledToday && (
+                                      <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800">
+                                        מתוכנן להיום ✓
+                                      </span>
+                                    )}
+                                    {scheduledDate && scheduledDate !== currentDate && scheduledDate !== 'backlog' && (
+                                      <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800">
+                                        משובץ ל-{formatHebrewDateDisplay(scheduledDate)} ✓
+                                      </span>
+                                    )}
+                                    {isDone && (
+                                      <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300">
+                                        הושלם ✓
+                                      </span>
+                                    )}
+                                    {stageToast?.stageId === stage.id && (
+                                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-600 text-white animate-pulse shadow-xs">
+                                        {stageToast.message}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {stage.description && (
+                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 whitespace-pre-wrap">
+                                      {stage.description}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Scheduling & Actions Bottom Bar */}
+                              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-1.5 flex-wrap">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleScheduleStage(selectedNotebook, stage, currentDate)}
+                                    className={`px-2.5 py-1 rounded-xl font-bold text-xs shadow-2xs transition-all flex items-center gap-1 cursor-pointer ${
+                                      isScheduledToday
+                                        ? 'bg-purple-700 text-white'
+                                        : 'bg-purple-600 hover:bg-purple-700 text-white'
+                                    }`}
+                                    title="הוסף שלב זה לתוכנית של היום"
+                                  >
+                                    <ArrowDownToLine className="w-3 h-3" />
+                                    <span>{isScheduledToday ? 'שבץ שוב' : 'להיום'}</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleScheduleStage(selectedNotebook, stage, 'backlog')}
+                                    className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                                      scheduledDate === 'backlog'
+                                        ? 'bg-amber-500 text-white shadow-2xs ring-1 ring-amber-400'
+                                        : 'bg-slate-100 dark:bg-slate-800 hover:bg-amber-100 dark:hover:bg-amber-950/60 text-slate-700 dark:text-slate-300 hover:text-amber-800'
+                                    }`}
+                                    title="העבר שלב זה לבנק היעדים"
+                                  >
+                                    <Inbox className="w-3 h-3" />
+                                    <span>לבנק</span>
+                                  </button>
+
+                                  <label
+                                    className="relative px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-purple-50 dark:hover:bg-purple-950/60 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                                    title="שבץ שלב זה ליום ספציפי"
+                                  >
+                                    <Calendar className="w-3 h-3 text-purple-600" />
+                                    <span>ליום...</span>
+                                    <input
+                                      type="date"
+                                      className="absolute inset-0 opacity-0 cursor-pointer"
+                                      onChange={(e) => {
+                                        if (e.target.value) {
+                                          handleScheduleStage(selectedNotebook, stage, e.target.value);
+                                        }
+                                      }}
+                                    />
+                                  </label>
+                                </div>
+
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingStageId(stage.id);
+                                      setEditStageTitle(stage.title);
+                                      setEditStageDesc(stage.description || '');
+                                      setEditStageDuration(stage.durationMinutes || 20);
+                                    }}
+                                    className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                                    title="ערוך שלב"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteStage(stage.id)}
+                                    className="p-1.5 text-slate-300 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                                    title="מחק שלב"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Add New Stage Bar */}
 
               {/* Add New Stage Bar */}
               <div className="p-3 bg-slate-50 dark:bg-slate-850 rounded-2xl border border-slate-200/80 dark:border-slate-800 flex items-center gap-2">
@@ -1181,7 +1626,8 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                 </button>
               </div>
             </div>
-          )}
+          );
+        })()}
 
           {/* ======================================================== */}
           {/* TAB 3: ADD NEW GOOGLE LM NOTEBOOK & DECOMPOSE WIZARD */}
