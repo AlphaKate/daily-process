@@ -357,15 +357,15 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
 
       {/* 2. GOALS SECTION (התפתחות אישית & תכנון לוח זמנים: יום | שבוע | חודש) */}
       <section className="space-y-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 min-w-0 w-full">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
               <Target className="w-4 h-4 stroke-[2.5]" />
             </div>
-            <div>
-              <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <span>Goals (התפתחות אישית ויעדים)</span>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300">
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
+                <span className="truncate">Goals (התפתחות אישית ויעדים)</span>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 shrink-0">
                   {goalsViewMode === 'day'
                     ? goalsTasks.length
                     : goalsViewMode === 'week'
@@ -373,14 +373,14 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                     : monthGoals.length}
                 </span>
               </h2>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                 יעדים קטנים ואבני דרך מתוך מסמכי ההתפתחות ב-Google Drive
               </p>
             </div>
           </div>
 
           {/* Action Bar: Timeline View Switcher (Day | Week | Month) & Timeline Modal Button */}
-          <div className="flex items-center flex-wrap gap-1.5 self-end sm:self-auto">
+          <div className="flex items-center flex-wrap gap-1.5 w-full sm:w-auto justify-between sm:justify-start min-w-0">
             {/* View Mode Segmented Control: יום | שבוע | חודש */}
             <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
               <button

@@ -32,8 +32,17 @@ export interface DayStats {
   casualCompleted: number;
 }
 
+export type FontSizeSetting = 'normal' | 'medium' | 'large' | 'xlarge';
+export type ThemeSetting = 'light' | 'dark' | 'system';
+export type FontFamilySetting = 'assistant' | 'heebo' | 'system';
+
 export interface AppSettings {
-  theme: 'light' | 'dark' | 'system';
+  theme: ThemeSetting;
+  fontSize: FontSizeSetting;
+  fontFamily?: FontFamilySetting;
+  highContrast?: boolean;
+  cardDensity?: 'comfortable' | 'compact';
+  confettiEnabled?: boolean;
   lastActiveDate: string; // tracks when user last opened the app to detect day changes
   userFullName?: string;
 }

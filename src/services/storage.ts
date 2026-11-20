@@ -45,13 +45,28 @@ export const getAppSettings = (): AppSettings => {
   const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
   if (raw) {
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      return {
+        theme: parsed.theme || 'system',
+        fontSize: parsed.fontSize || 'medium',
+        fontFamily: parsed.fontFamily || 'assistant',
+        highContrast: Boolean(parsed.highContrast),
+        cardDensity: parsed.cardDensity || 'comfortable',
+        confettiEnabled: parsed.confettiEnabled !== false,
+        lastActiveDate: parsed.lastActiveDate || getTodayDateString(),
+        userFullName: parsed.userFullName
+      };
     } catch (e) {
       console.error('Failed to parse settings', e);
     }
   }
   return {
     theme: 'system',
+    fontSize: 'medium',
+    fontFamily: 'assistant',
+    highContrast: false,
+    cardDensity: 'comfortable',
+    confettiEnabled: true,
     lastActiveDate: getTodayDateString()
   };
 };

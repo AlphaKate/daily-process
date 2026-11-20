@@ -44,6 +44,8 @@ interface HeaderProps {
   onOpenVoiceTask?: () => void;
   // Security & Disconnect
   onOpenSecurityModal?: () => void;
+  // Display & Font Settings
+  onOpenDisplaySettings?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -65,6 +67,7 @@ export const Header: React.FC<HeaderProps> = ({
   areNotificationsEnabled,
   onOpenVoiceTask,
   onOpenSecurityModal,
+  onOpenDisplaySettings,
 }) => {
   const isToday = currentDate === getTodayDateString();
 
@@ -189,14 +192,18 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* Dark / Light Toggle */}
+            {/* Display & Font Settings (יום/לילה וסרגל גופן) */}
             <button
-              onClick={onToggleTheme}
-              className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
-              aria-label="החלף מצב תצוגה"
-              title={isDark ? "מעבר למצב בהיר" : "מעבר למצב כהה"}
+              onClick={onOpenDisplaySettings || onToggleTheme}
+              className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+              aria-label="הגדרות תצוגה, מצב יום/לילה וגודל גופן"
+              title="הגדרות תצוגה, מצב יום/לילה וגודל גופן"
             >
-              {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
+              {isDark ? (
+                <Moon className="w-4 h-4 text-indigo-400" />
+              ) : (
+                <Sun className="w-4 h-4 text-amber-500" />
+              )}
             </button>
           </div>
         </div>

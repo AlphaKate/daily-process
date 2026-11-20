@@ -246,23 +246,23 @@ export const TaskItem: React.FC<TaskItemProps> = ({
           <div className="flex items-center flex-wrap gap-1.5 sm:gap-2 mb-1">
             {/* Category Tag */}
             <span
-              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${categoryStyle.badgeBg}`}
+              className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${categoryStyle.badgeBg}`}
             >
               {categoryStyle.badgeText}
             </span>
 
             {/* Google Calendar badge */}
             {isCalendarTask && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shadow-2xs">
-                <Calendar className="w-3 h-3 text-blue-500" />
+              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shadow-2xs">
+                <Calendar className="w-3.5 h-3.5 text-blue-500" />
                 <span>יומן Google</span>
               </span>
             )}
 
             {/* Microsoft To Do badge */}
             {isMsToDo && (
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-950/70 dark:text-sky-300 border border-sky-200 dark:border-sky-800 shadow-2xs">
-                <ListTodo className="w-3 h-3 text-sky-500" />
+              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-950/70 dark:text-sky-300 border border-sky-200 dark:border-sky-800 shadow-2xs">
+                <ListTodo className="w-3.5 h-3.5 text-sky-500" />
                 <span>Microsoft To Do</span>
               </span>
             )}
@@ -270,16 +270,16 @@ export const TaskItem: React.FC<TaskItemProps> = ({
             {/* Calendar meeting time pill (e.g. '14:00 (45 דק׳)' or 'כל היום') */}
             {isCalendarTask && (
               task.time ? (
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-md bg-blue-50/90 text-blue-800 dark:bg-blue-950/80 dark:text-blue-200 border border-blue-200/90 dark:border-blue-800 shadow-2xs">
-                  <Clock className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold px-2.5 py-0.5 rounded-md bg-blue-50/90 text-blue-800 dark:bg-blue-950/80 dark:text-blue-200 border border-blue-200/90 dark:border-blue-800 shadow-2xs">
+                  <Clock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                   <span>
                     {task.time}
                     {task.durationMinutes ? ` (${task.durationMinutes} דק׳)` : ''}
                   </span>
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 dark:bg-slate-700/60 dark:text-slate-300 border border-slate-200 dark:border-slate-600">
-                  <Calendar className="w-3 h-3 text-slate-400" />
+                <span className="inline-flex items-center gap-1 text-xs sm:text-sm font-semibold px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 dark:bg-slate-700/60 dark:text-slate-300 border border-slate-200 dark:border-slate-600">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
                   <span>כל היום</span>
                 </span>
               )
@@ -287,7 +287,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
 
             {/* Non-calendar duration pill (⏱️ 45 דק׳) */}
             {!isCalendarTask && task.durationMinutes && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80">
+              <span className="inline-flex items-center gap-1 text-xs sm:text-sm font-semibold px-2.5 py-0.5 rounded-md bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80">
                 <span>⏱️</span>
                 <span>{task.durationMinutes} דק׳</span>
               </span>
@@ -295,16 +295,16 @@ export const TaskItem: React.FC<TaskItemProps> = ({
 
             {/* Rollover badge if moved from previous day */}
             {task.rolledOverFrom && !task.completed && (
-              <span className="flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                <RotateCcw className="w-2.5 h-2.5" />
+              <span className="flex items-center gap-1 text-xs font-medium px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                <RotateCcw className="w-3 h-3" />
                 נדחה מ-{task.rolledOverFrom}
               </span>
             )}
 
             {/* Non-calendar time badge */}
             {!isCalendarTask && task.time && (
-              <span className="flex items-center gap-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/70 px-2 py-0.5 rounded-md">
-                <Clock className="w-3 h-3 text-slate-400" />
+              <span className="flex items-center gap-1 text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/70 px-2.5 py-0.5 rounded-md">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
                 {task.time}
               </span>
             )}
@@ -394,7 +394,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
             className={`cursor-pointer select-none ${hasDetails ? 'hover:text-emerald-600 dark:hover:text-emerald-400' : ''}`}
           >
             <h3
-              className={`text-sm sm:text-base font-bold leading-snug transition-colors ${
+              className={`text-base sm:text-lg font-bold leading-snug transition-colors ${
                 task.completed
                   ? 'line-through text-slate-400 dark:text-slate-500 font-normal'
                   : 'text-slate-900 dark:text-slate-100'

@@ -41,6 +41,7 @@ import { TaskAlertModal } from './components/TaskAlertModal';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal';
 import { VoiceTaskModal } from './components/VoiceTaskModal';
 import { SecurityDisconnectModal } from './components/SecurityDisconnectModal';
+import { DisplaySettingsModal } from './components/DisplaySettingsModal';
 import { AppPrivacyShield } from './components/AppPrivacyShield';
 import {
   NotificationPreferences,
@@ -90,6 +91,9 @@ export const App: React.FC = () => {
 
   // Security, Disconnect & Emergency Wipe Modal state
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
+
+  // Display & Font Size Settings Modal state
+  const [isDisplaySettingsOpen, setIsDisplaySettingsOpen] = useState(false);
 
   const lastSyncTimeRef = useRef<number>(0);
 
@@ -348,20 +352,69 @@ export const App: React.FC = () => {
     return () => clearInterval(timer);
   }, [syncGoogleServices]);
 
-  const handleToggleTheme = () => {
-    const nextDark = !isDark;
-    setIsDark(nextDark);
-    if (nextDark) {
+  const applyDisplaySettings = useCallback((newSettings: AppSettings) => {
+    // 1. Base font size scale (Tailwind rem units inherit directly from root font-size)
+    const FONT_SCALES: Record<string, string> = {
+      normal: '16px',
+      medium: '18px',
+      large: '20px',
+      xlarge: '22px'
+    };
+    const baseSize = FONT_SCALES[newSettings.fontSize || 'medium'] || '18px';
+    document.documentElement.style.fontSize = baseSize;
+
+    // 2. Theme (Day / Night / Auto System)
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const isDarkEffective =
+      newSettings.theme === 'dark' ||
+      (newSettings.theme === 'system' && prefersDark) ||
+      (!newSettings.theme && prefersDark);
+
+    setIsDark(isDarkEffective);
+    if (isDarkEffective) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
+
+    // 3. High Contrast Mode
+    if (newSettings.highContrast) {
+      document.documentElement.classList.add('high-contrast');
+    } else {
+      document.documentElement.classList.remove('high-contrast');
+    }
+
+    // 4. Hebrew Font Family
+    if (newSettings.fontFamily === 'heebo') {
+      document.body.style.fontFamily = "'Heebo', system-ui, -apple-system, sans-serif";
+    } else if (newSettings.fontFamily === 'system') {
+      document.body.style.fontFamily = "system-ui, -apple-system, BlinkMacSystemFont, sans-serif";
+    } else {
+      document.body.style.fontFamily = "'Assistant', 'Heebo', system-ui, -apple-system, sans-serif";
+    }
+  }, []);
+
+  useEffect(() => {
+    applyDisplaySettings(settings);
+  }, [applyDisplaySettings, settings]);
+
+  const handleToggleTheme = () => {
+    const nextDark = !isDark;
+    const nextTheme = nextDark ? 'dark' : 'light';
     const updatedSettings: AppSettings = {
       ...settings,
-      theme: nextDark ? 'dark' : 'light'
+      theme: nextTheme
     };
     setSettings(updatedSettings);
     saveAppSettings(updatedSettings);
+    applyDisplaySettings(updatedSettings);
+  };
+
+  const handleSaveDisplaySettings = (newSettings: AppSettings) => {
+    setSettings(newSettings);
+    saveAppSettings(newSettings);
+    applyDisplaySettings(newSettings);
+    showToast('הגדרות התצוגה והגופן עודכנו בהצלחה!', 'success');
   };
 
   const handleConnectGoogle = () => {
@@ -704,6 +757,7 @@ export const App: React.FC = () => {
         areNotificationsEnabled={notificationPrefs.enabled}
         onOpenVoiceTask={() => setIsVoiceModalOpen(true)}
         onOpenSecurityModal={() => setIsSecurityModalOpen(true)}
+        onOpenDisplaySettings={() => setIsDisplaySettingsOpen(true)}
       />
 
       {/* Floating Notification Toast */}
@@ -821,6 +875,14 @@ export const App: React.FC = () => {
         tasksCount={tasks.filter(t => !t.isDeleted).length}
         onDisconnectOnly={handleDisconnectOnly}
         onEmergencyWipe={handleEmergencyWipe}
+      />
+
+      {/* Display & Font Settings Modal */}
+      <DisplaySettingsModal
+        isOpen={isDisplaySettingsOpen}
+        onClose={() => setIsDisplaySettingsOpen(false)}
+        settings={settings}
+        onSaveSettings={handleSaveDisplaySettings}
       />
 
       {/* App Switcher & Background Privacy Shield */}
