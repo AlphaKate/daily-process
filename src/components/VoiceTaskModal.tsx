@@ -244,13 +244,13 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div
-        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden text-right"
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-lg w-full max-h-[92vh] flex flex-col overflow-hidden text-right"
         dir="rtl"
       >
         {/* Header */}
-        <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-orange-500/10 via-amber-500/5 to-transparent">
+        <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-orange-500/10 via-amber-500/5 to-transparent shrink-0">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-md ${
               isListening ? 'bg-orange-500 animate-pulse shadow-orange-500/30' : 'bg-slate-700 dark:bg-slate-800'
@@ -280,8 +280,10 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
           </button>
         </div>
 
-        {/* Content Body */}
-        <form onSubmit={handleSave} className="p-5 space-y-4">
+        {/* Form enclosing scrollable content and sticky footer */}
+        <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* Scrollable Content Body */}
+          <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 overscroll-contain">
           {/* Voice Visualizer / Controls */}
           <div className="flex flex-col items-center justify-center p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-800 text-center relative overflow-hidden">
             {/* Pulsing rings when listening */}
@@ -482,12 +484,14 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+          </div>
+
+          {/* Sticky Footer Action Buttons - Always visible and thumb-accessible */}
+          <div className="p-3.5 sm:p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 shrink-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm">
             <button
               type="button"
               onClick={handleResetRecording}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold transition-colors"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold transition-colors cursor-pointer"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>הקלט שוב</span>
@@ -500,7 +504,7 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
                   stopListening();
                   onClose();
                 }}
-                className="px-3 py-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold transition-colors"
+                className="px-3 py-2 rounded-xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold transition-colors cursor-pointer"
               >
                 ביטול
               </button>
@@ -508,7 +512,7 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
               <button
                 type="submit"
                 disabled={!parsedTitle.trim()}
-                className="flex items-center gap-1.5 px-4 py-2 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-md shadow-orange-600/20 disabled:opacity-50 transition-all cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-orange-600 hover:bg-orange-700 active:scale-95 text-white text-xs sm:text-sm font-bold rounded-xl shadow-md shadow-orange-600/20 disabled:opacity-50 transition-all cursor-pointer"
               >
                 <Check className="w-4 h-4 stroke-[2.5]" />
                 <span>הוסף לרשימת Must Do</span>
