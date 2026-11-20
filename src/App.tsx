@@ -8,7 +8,8 @@ import {
   saveAppSettings,
   checkUnfinishedPreviousTasks,
   ensureAssertivePracticePlanSeeded,
-  performEmergencyLocalWipe
+  performEmergencyLocalWipe,
+  loadStoredTasksSecure
 } from './services/storage';
 import {
   initGoogleTokenClient,
@@ -237,8 +238,12 @@ export const App: React.FC = () => {
 
   // Initialize data, theme, and Google Token Client
   useEffect(() => {
-    const loadedTasks = ensureAssertivePracticePlanSeeded();
-    setTasks(loadedTasks);
+    const initData = async () => {
+      await loadStoredTasksSecure();
+      const loadedTasks = ensureAssertivePracticePlanSeeded();
+      setTasks(loadedTasks);
+    };
+    initData();
 
     // Dark mode initialization
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -397,7 +402,7 @@ export const App: React.FC = () => {
     try {
       await logoutGoogle(true);
       logoutMicrosoft();
-      performEmergencyLocalWipe();
+      await performEmergencyLocalWipe();
       setTasks([]);
       setGoogleUser(null);
       showToast('כל הנתונים המקומיים נמחקו בהצלחה והסשן נותק', 'success');
@@ -405,7 +410,7 @@ export const App: React.FC = () => {
         window.location.reload();
       }, 1000);
     } catch (e) {
-      performEmergencyLocalWipe();
+      await performEmergencyLocalWipe();
       window.location.reload();
     }
   };

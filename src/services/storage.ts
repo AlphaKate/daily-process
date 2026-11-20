@@ -1,7 +1,10 @@
 import { Task, AppSettings, DayStats } from '../types';
+import { encryptString, decryptString, purgeEncryptionKeys } from './encryptionService';
 
 const TASKS_STORAGE_KEY = 'daily_proc_tasks_v1';
 const SETTINGS_STORAGE_KEY = 'daily_proc_settings_v1';
+
+let inMemoryTasksCache: Task[] | null = null;
 
 export const getTodayDateString = (): string => {
   const now = new Date();
@@ -135,15 +138,63 @@ export const ensureAssertivePracticePlanSeeded = (): Task[] => {
   return tasks;
 };
 
-export const getStoredTasks = (): Task[] => {
+/**
+ * Loads tasks securely from localStorage, transparently decrypting
+ * the AES-256-GCM ciphertext envelope and populating memory cache.
+ */
+export const loadStoredTasksSecure = async (): Promise<Task[]> => {
   const raw = localStorage.getItem(TASKS_STORAGE_KEY);
   if (!raw) {
     const seed = getInitialSeedTasks();
+    inMemoryTasksCache = seed;
     saveStoredTasks(seed);
     return seed;
   }
+
   try {
-    return JSON.parse(raw);
+    const decrypted = await decryptString(raw);
+    if (!decrypted) {
+      return inMemoryTasksCache || [];
+    }
+    const parsed = JSON.parse(decrypted);
+    if (Array.isArray(parsed)) {
+      inMemoryTasksCache = parsed;
+      // If was legacy unencrypted, saveStoredTasks will encrypt it now
+      if (!raw.startsWith('{"enc":"aes-256-gcm"')) {
+        saveStoredTasks(parsed);
+      }
+      return parsed;
+    }
+  } catch (e) {
+    console.error('Failed to load secure tasks:', e);
+  }
+  return inMemoryTasksCache || [];
+};
+
+export const getStoredTasks = (): Task[] => {
+  if (inMemoryTasksCache) {
+    return inMemoryTasksCache;
+  }
+  const raw = localStorage.getItem(TASKS_STORAGE_KEY);
+  if (!raw) {
+    const seed = getInitialSeedTasks();
+    inMemoryTasksCache = seed;
+    saveStoredTasks(seed);
+    return seed;
+  }
+
+  // If raw is encrypted, trigger background load into memory cache
+  if (raw.startsWith('{"enc":"aes-256-gcm"')) {
+    loadStoredTasksSecure().catch(() => {});
+    return inMemoryTasksCache || [];
+  }
+
+  // Legacy plaintext
+  try {
+    const parsed = JSON.parse(raw);
+    inMemoryTasksCache = parsed;
+    saveStoredTasks(parsed); // transparently encrypts in background
+    return parsed;
   } catch (e) {
     console.error('Failed to parse tasks', e);
     return [];
@@ -151,7 +202,16 @@ export const getStoredTasks = (): Task[] => {
 };
 
 export const saveStoredTasks = (tasks: Task[]): void => {
-  localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks));
+  inMemoryTasksCache = tasks;
+  // Transparent AES-256-GCM encryption in localStorage
+  encryptString(JSON.stringify(tasks))
+    .then(ciphertext => {
+      localStorage.setItem(TASKS_STORAGE_KEY, ciphertext);
+    })
+    .catch(err => {
+      console.warn('Fallback saving plaintext tasks on encryption error:', err);
+      localStorage.setItem(TASKS_STORAGE_KEY, JSON.stringify(tasks));
+    });
 };
 
 // Check for overdue unfinished tasks from previous days (ignoring backlog tasks without dates)
@@ -270,11 +330,13 @@ const getInitialSeedTasks = (): Task[] => {
 };
 
 /**
- * Completely purges all local storage and session cache from this device
- * (Emergency / Panic Wipe). Does NOT modify or delete remote files in Google Drive.
+ * Completely purges all local storage, encryption keys, and session cache from this device
+ * (Emergency / Panic Wipe with Crypto-Shredding). Does NOT modify or delete remote files in Google Drive.
  */
-export const performEmergencyLocalWipe = (): void => {
+export const performEmergencyLocalWipe = async (): Promise<void> => {
   try {
+    inMemoryTasksCache = null;
+    await purgeEncryptionKeys();
     localStorage.clear();
     sessionStorage.clear();
   } catch (e) {
