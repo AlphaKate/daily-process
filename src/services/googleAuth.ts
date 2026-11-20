@@ -364,6 +364,8 @@ export const revokeGoogleAccess = async (token?: string): Promise<boolean> => {
   }
 };
 
+import { clearStoredMicPermission } from './microphoneService';
+
 /**
  * Logs out of Google, revoking access token if requested, and cleans local Google keys.
  */
@@ -375,4 +377,5 @@ export const logoutGoogle = async (revokeOnServer: boolean = true): Promise<void
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem('google_drive_tasks_file_id');
+  clearStoredMicPermission();
 };

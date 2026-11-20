@@ -64,28 +64,24 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
 
   const recognitionRef = useRef<any>(null);
 
-  // Initialize Speech Recognition
-  useEffect(() => {
-    if (!isOpen) {
-      stopListening();
-      setTranscript('');
-      setInterimTranscript('');
-      setErrorMsg(null);
-      setAddToCalendar(false);
-      return;
-    }
-
+  // Helper to instantiate clean speech recognition on demand
+  const setupRecognition = () => {
     const win = window as IWindowSpeechRecognition;
     const SpeechRec = win.SpeechRecognition || win.webkitSpeechRecognition;
 
     if (!SpeechRec) {
       setIsSupported(false);
-      setErrorMsg('הדפדפן שלך אינו תומך בהקלטה קולית (Web Speech API). באפשרותך להקליד ישירות את המשימה.');
-      return;
+      setErrorMsg('הדפדפן אינו תומך בהקלטה קולית (Web Speech API). באפשרותך להקליד ישירות את המשימה.');
+      return null;
     }
 
     setIsSupported(true);
-    setErrorMsg(null);
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (_) {}
+    }
 
     try {
       const recognition = new SpeechRec();
@@ -97,7 +93,6 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
       recognition.onstart = () => {
         setIsListening(true);
         setErrorMsg(null);
-        // Persist microphone permission setting as approved
         setStoredMicPermission(true);
         setIsMicPermitted(true);
       };
@@ -132,12 +127,19 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
 
       recognition.onerror = (event: any) => {
         console.warn('Speech recognition error:', event.error);
+        const storedApproved = getStoredMicPermission();
         if (event.error === 'not-allowed') {
-          setStoredMicPermission(false);
-          setIsMicPermitted(false);
-          setErrorMsg('גישה למיקרופון נחסמה. לחצי על "אשר מיקרופון" למטה כדי לאפשר הקלטה.');
-        } else if (event.error === 'no-speech') {
-          // No speech detected, wait or let user retry
+          // If user previously approved, DO NOT revoke!
+          // iOS triggers not-allowed when backgrounded or when auto-start lacks user touch gesture.
+          if (!storedApproved) {
+            setIsMicPermitted(false);
+            setErrorMsg('גישה למיקרופון טרם אושרה. לחצי על "אשר ושמור גישה למיקרופון" למטה.');
+          } else {
+            setIsMicPermitted(true);
+            setErrorMsg(null);
+          }
+        } else if (event.error === 'no-speech' || event.error === 'aborted') {
+          // Normal, silent timeout
         } else {
           setErrorMsg(`שגיאת זיהוי קולי: ${event.error}`);
         }
@@ -149,18 +151,80 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
       };
 
       recognitionRef.current = recognition;
+      return recognition;
+    } catch (e) {
+      console.error('Failed to init SpeechRecognition:', e);
+      setIsSupported(false);
+      return null;
+    }
+  };
 
-      // Automatically start listening upon opening modal
+  const startListening = () => {
+    setErrorMsg(null);
+    const recognition = setupRecognition();
+    if (!recognition) return;
+    try {
+      recognition.start();
+    } catch (e) {
+      console.warn('Recognition start exception:', e);
+      setIsListening(false);
+    }
+  };
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (_) {
+        try {
+          recognitionRef.current.stop();
+        } catch (_) {}
+      }
+    }
+    setIsListening(false);
+  };
+
+  // Synchronize microphone permission and handle background transitions
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        stopListening();
+      } else if (document.visibilityState === 'visible') {
+        // App returned from background - refresh permission flag from localStorage
+        setIsMicPermitted(getStoredMicPermission());
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
+  // Initialize Speech Recognition when modal opens
+  useEffect(() => {
+    if (!isOpen) {
+      stopListening();
+      setTranscript('');
+      setInterimTranscript('');
+      setErrorMsg(null);
+      setAddToCalendar(false);
+      return;
+    }
+
+    // Refresh stored permission status
+    setIsMicPermitted(getStoredMicPermission());
+
+    const recognition = setupRecognition();
+    if (recognition) {
+      // Auto-start listening on modal open
       setTimeout(() => {
         try {
           recognition.start();
         } catch (e) {
           console.warn('Could not auto-start recognition:', e);
         }
-      }, 200);
-    } catch (e) {
-      console.error('Failed to init SpeechRecognition:', e);
-      setIsSupported(false);
+      }, 150);
     }
 
     return () => {
@@ -171,30 +235,6 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
       }
     };
   }, [isOpen, currentDate]);
-
-  const startListening = () => {
-    if (!recognitionRef.current) return;
-    setErrorMsg(null);
-    try {
-      recognitionRef.current.start();
-    } catch (e) {
-      console.warn('Failed to start speech recognition:', e);
-    }
-  };
-
-  const stopListening = () => {
-    if (recognitionRef.current) {
-      try {
-        // Immediate hardware release via abort
-        recognitionRef.current.abort();
-      } catch (_) {
-        try {
-          recognitionRef.current.stop();
-        } catch (_) {}
-      }
-    }
-    setIsListening(false);
-  };
 
   const handleResetRecording = () => {
     stopListening();
@@ -361,7 +401,7 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
               {isMicPermitted ? (
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shadow-2xs">
                   <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 stroke-[3]" />
-                  <span>אישור מיקרופון נשמר בהצלחה ✓</span>
+                  <span>אישור מיקרופון נשמר באייפון זה ✓</span>
                 </div>
               ) : (
                 <button
@@ -370,7 +410,7 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-orange-100 hover:bg-orange-200 dark:bg-orange-950 dark:hover:bg-orange-900 text-orange-800 dark:text-orange-200 border border-orange-300 dark:border-orange-800 transition-colors cursor-pointer"
                 >
                   <Mic className="w-3.5 h-3.5" />
-                  <span>אשר ושמור גישה למיקרופון</span>
+                  <span>אשר ושמור גישה למיקרופון באייפון זה</span>
                 </button>
               )}
             </div>

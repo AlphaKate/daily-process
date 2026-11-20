@@ -4,6 +4,7 @@ const MIC_PERMISSION_KEY = 'daily_proc_mic_permitted_v1';
 
 /**
  * Returns whether the user has previously granted microphone permission in this app.
+ * Persists across backgrounding, app restarts, and refreshes on the current device.
  */
 export const getStoredMicPermission = (): boolean => {
   try {
@@ -25,8 +26,19 @@ export const setStoredMicPermission = (granted: boolean): void => {
 };
 
 /**
+ * Clears the stored microphone permission (called strictly on Google disconnection or panic wipe).
+ */
+export const clearStoredMicPermission = (): void => {
+  try {
+    localStorage.removeItem(MIC_PERMISSION_KEY);
+  } catch (e) {
+    console.error('Failed to clear mic permission', e);
+  }
+};
+
+/**
  * Explicitly triggers browser microphone permission prompt via getUserMedia,
- * and if granted, saves the setting immediately.
+ * and if granted, saves the setting permanently for this device.
  */
 export const requestExplicitMicPermission = async (): Promise<boolean> => {
   try {
@@ -39,9 +51,7 @@ export const requestExplicitMicPermission = async (): Promise<boolean> => {
     }
   } catch (err: any) {
     console.warn('getUserMedia mic request error:', err);
-    if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
-      setStoredMicPermission(false);
-    }
+    // Never revoke permission here if user already granted it previously
   }
   return false;
 };

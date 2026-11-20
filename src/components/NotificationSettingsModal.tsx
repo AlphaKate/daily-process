@@ -226,11 +226,11 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
                   ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                   : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
               }`}>
-                {micPermitted ? 'מאושר ושמור ✓' : 'טרם אושר'}
+                {micPermitted ? 'מאושר ושמור באייפון זה ✓' : 'טרם אושר'}
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              מאפשר הקלטת משימות קוליות באופן מיידי בלחיצה אחת
+              ההרשאה נשמרת באופן קבוע באייפון הנוכחי כל עוד לא התנתקת מ-Google או ביצעת מחיקה ואיפוס.
             </p>
             {!micPermitted && (
               <button
@@ -238,7 +238,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
                 onClick={handleRequestMic}
                 className="w-full mt-1 py-1.5 px-3 bg-orange-600 hover:bg-orange-700 active:scale-98 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
               >
-                אשר ושמור גישה למיקרופון
+                אשר ושמור גישה למיקרופון באייפון זה
               </button>
             )}
           </div>
