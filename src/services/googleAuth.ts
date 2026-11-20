@@ -78,14 +78,68 @@ export const getGoogleOAuthUrl = (): string => {
   )}&prompt=consent`;
 };
 
-// Parse access token from URL hash (from official OAuth Redirect Flow)
+/**
+ * Completely scrubs OAuth tokens and sensitive auth parameters from URL hash and search query.
+ * Prevents tokens from leaking into browser history, referrer headers, or UI screenshots.
+ */
+export const scrubTokensFromUrl = (): void => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const url = new URL(window.location.href);
+    let changed = false;
+
+    if (url.hash && (url.hash.includes('access_token=') || url.hash.includes('id_token='))) {
+      url.hash = '';
+      changed = true;
+    }
+
+    const sensitiveParams = [
+      'access_token',
+      'id_token',
+      'code',
+      'token_type',
+      'expires_in',
+      'authuser',
+      'prompt',
+      'scope'
+    ];
+
+    sensitiveParams.forEach(param => {
+      if (url.searchParams.has(param)) {
+        url.searchParams.delete(param);
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      const cleanUrl =
+        url.pathname +
+        (url.searchParams.toString() ? '?' + url.searchParams.toString() : '') +
+        url.hash;
+      window.history.replaceState(null, document.title, cleanUrl);
+    }
+  } catch (e) {
+    try {
+      window.history.replaceState(null, document.title, window.location.pathname);
+    } catch (_) {}
+  }
+};
+
+// Parse access token from URL hash or query params (from official OAuth Redirect Flow)
 export const checkUrlForAuthToken = (): GoogleAuthToken | null => {
   if (typeof window === 'undefined') return null;
   const hash = window.location.hash;
-  if (!hash || !hash.includes('access_token=')) return null;
+  const search = window.location.search;
+  
+  const hasTokenInHash = hash && hash.includes('access_token=');
+  const hasTokenInSearch = search && search.includes('access_token=');
+  if (!hasTokenInHash && !hasTokenInSearch) return null;
 
   try {
-    const params = new URLSearchParams(hash.substring(1));
+    const params = new URLSearchParams(
+      hasTokenInHash ? hash.substring(1) : search.substring(1)
+    );
     // Do not interfere with Microsoft OAuth redirect
     if (params.get('state') === 'ms_auth') return null;
     const accessToken = params.get('access_token');
@@ -104,15 +158,17 @@ export const checkUrlForAuthToken = (): GoogleAuthToken | null => {
       };
       saveStoredGoogleUser(defaultUser);
 
-      // Clean hash from URL for a clean look and reliable SPA routing
-      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      // Immediately scrub sensitive tokens from URL for security and clean history
+      scrubTokensFromUrl();
 
       // Fetch user profile info asynchronously
       fetchAndSaveUserInfo(token.access_token).catch(() => {});
       return token;
     }
   } catch (e) {
-    console.warn('Error parsing token from URL hash', e);
+    console.warn('Error parsing token from URL', e);
+  } finally {
+    scrubTokensFromUrl();
   }
   return null;
 };

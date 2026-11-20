@@ -106,6 +106,13 @@ export const SecurityDisconnectModal: React.FC<SecurityDisconnectModalProps> = (
                 {tasksCount} משימות / יעדים מקומיים
               </span>
             </div>
+            <div className="flex items-center justify-between pt-1.5 border-t border-slate-200/60 dark:border-slate-700/60 text-[11px]">
+              <span className="text-slate-500 dark:text-slate-400">מסך פרטיות במעבר אפליקציות:</span>
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                פעיל ומוגן (מסתיר משימות ברקע)
+              </span>
+            </div>
           </div>
 
           {!confirmWipeStep ? (

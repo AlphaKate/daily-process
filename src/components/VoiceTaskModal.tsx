@@ -163,8 +163,13 @@ export const VoiceTaskModal: React.FC<VoiceTaskModalProps> = ({
   const stopListening = () => {
     if (recognitionRef.current) {
       try {
-        recognitionRef.current.stop();
-      } catch (_) {}
+        // Immediate hardware release via abort
+        recognitionRef.current.abort();
+      } catch (_) {
+        try {
+          recognitionRef.current.stop();
+        } catch (_) {}
+      }
     }
     setIsListening(false);
   };

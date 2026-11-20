@@ -1,3 +1,5 @@
+import { scrubTokensFromUrl } from './googleAuth';
+
 export const DEFAULT_MICROSOFT_CLIENT_ID = 'ea91a78b-3023-424f-ba7e-75f822a16d00';
 
 export const MS_TOKEN_KEY = 'ms_oauth_token_v1';
@@ -114,8 +116,8 @@ export const checkUrlForMicrosoftToken = (): MicrosoftAuthToken | null => {
       };
       saveStoredMicrosoftUser(defaultUser);
 
-      // Clean hash from URL for a clean SPA URL state without affecting search params
-      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      // Clean hash & sensitive tokens from URL for a clean SPA URL state
+      scrubTokensFromUrl();
 
       // Asynchronously fetch user profile details
       fetchAndSaveMicrosoftUserInfo(token.access_token).catch(() => {});

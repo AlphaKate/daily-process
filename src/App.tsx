@@ -40,6 +40,7 @@ import { TaskAlertModal } from './components/TaskAlertModal';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal';
 import { VoiceTaskModal } from './components/VoiceTaskModal';
 import { SecurityDisconnectModal } from './components/SecurityDisconnectModal';
+import { AppPrivacyShield } from './components/AppPrivacyShield';
 import {
   NotificationPreferences,
   getNotificationPreferences,
@@ -816,6 +817,9 @@ export const App: React.FC = () => {
         onDisconnectOnly={handleDisconnectOnly}
         onEmergencyWipe={handleEmergencyWipe}
       />
+
+      {/* App Switcher & Background Privacy Shield */}
+      <AppPrivacyShield enabled={true} />
     </div>
   );
 };
