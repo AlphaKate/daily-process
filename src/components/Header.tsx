@@ -95,9 +95,12 @@ export const Header: React.FC<HeaderProps> = ({
               <CheckSquare className="w-4 h-4 stroke-[2.5]" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-xs sm:text-base font-black text-slate-900 dark:text-white leading-tight truncate">
-                יומי & התפתחות
+              <h1 className="text-xs sm:text-base font-black text-slate-900 dark:text-white leading-tight truncate tracking-tight">
+                Daily Process
               </h1>
+              <p className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-semibold tracking-wide hidden xs:block">
+                Growth & Goals
+              </p>
             </div>
           </div>
 

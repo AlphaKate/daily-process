@@ -72,7 +72,7 @@ export const AppPrivacyShield: React.FC<AppPrivacyShieldProps> = ({ enabled = tr
 
         {/* Text */}
         <div className="space-y-1.5">
-          <h2 className="text-xl font-bold tracking-tight text-white">יומי & התפתחות</h2>
+          <h2 className="text-xl font-bold tracking-tight text-white">Daily Process</h2>
           <p className="text-xs font-medium text-emerald-300/90 bg-emerald-950/60 border border-emerald-800/60 px-3 py-1 rounded-full inline-block">
             🛡️ מסך פרטיות מוגן
           </p>
