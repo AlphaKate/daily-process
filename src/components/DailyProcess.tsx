@@ -174,16 +174,47 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
   };
 
   const handleScheduleNotebookStage = (newTask: Task | Task[]) => {
-    const tasksToAdd = Array.isArray(newTask) ? newTask : [newTask];
-    if (tasksToAdd.length === 0) return;
+    const incoming = Array.isArray(newTask) ? newTask : [newTask];
+    if (incoming.length === 0) return;
+
     const stored = getStoredTasks();
-    const updated = [...tasksToAdd, ...stored];
-    saveStoredTasks(updated);
+    const map = new Map(stored.map(t => [t.id, t]));
+    const updatedList: Task[] = [];
+    const newList: Task[] = [];
+
+    incoming.forEach(t => {
+      // Find by matching id or matching stage title
+      const existingByTitle = Array.from(map.values()).find(
+        x => !x.isDeleted && x.title.trim().toLowerCase() === t.title.trim().toLowerCase()
+      );
+
+      if (map.has(t.id)) {
+        map.set(t.id, t);
+        updatedList.push(t);
+      } else if (existingByTitle) {
+        const merged: Task = {
+          ...existingByTitle,
+          date: t.date,
+          category: 'goals',
+          durationMinutes: t.durationMinutes || existingByTitle.durationMinutes || 20,
+          milestoneTitle: t.milestoneTitle || existingByTitle.milestoneTitle,
+          link: t.link || existingByTitle.link,
+          updatedAt: new Date().toISOString()
+        };
+        map.set(existingByTitle.id, merged);
+        updatedList.push(merged);
+      } else {
+        map.set(t.id, t);
+        newList.push(t);
+      }
+    });
+
+    const finalTasks = Array.from(map.values());
+    saveStoredTasks(finalTasks);
     if (_onTasksSynced) {
-      _onTasksSynced(tasksToAdd, []);
-    } else {
-      setLocalTasksVersion(v => v + 1);
+      _onTasksSynced(newList, updatedList);
     }
+    setLocalTasksVersion(v => v + 1);
   };
 
   // Operational Super List (To Do) handlers
