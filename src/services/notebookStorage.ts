@@ -127,57 +127,185 @@ export const deleteLearningNotebook = (id: string): LearningNotebook[] => {
   return updated;
 };
 
-// Helper: parse raw pasted stages text into NotebookStage items
-// Supports lines like: "1. Stage Name", "- Stage Name (30m)", "Stage: Description"
-export const parseRawStagesText = (rawText: string): NotebookStage[] => {
-  const lines = rawText
-    .split('\n')
-    .map(l => l.trim())
-    .filter(Boolean);
+// Smart parser for any plan content (Hebrew, English, Markdown, Lists, Checklists)
+export const parsePlanContentToStages = (rawText: string): NotebookStage[] => {
+  if (!rawText || !rawText.trim()) return [];
 
-  return lines.map((line, idx) => {
-    // Strip leading numbers or bullets (e.g. "1.", "1)", "-", "*")
-    const cleanLine = line.replace(/^(\d+[\.\)]|\-|\*|\•)\s*/, '').trim();
+  const text = rawText.trim();
+  const stages: NotebookStage[] = [];
+  const lines = text.split(/\r?\n/);
 
-    // Look for duration pattern e.g. "(30 דק')", "(45m)", "60 דקות"
+  interface RawBlock {
+    titleLine: string;
+    bodyLines: string[];
+  }
+  const blocks: RawBlock[] = [];
+  let currentBlock: RawBlock | null = null;
+
+  const isHeadingLine = (l: string): boolean => {
+    const trimmed = l.trim();
+    if (!trimmed) return false;
+    // Markdown headers: # , ## , ### , ####
+    if (/^#{1,4}\s+/.test(trimmed)) return true;
+    // Stage / Day / Week prefix in Hebrew or English: e.g. "שלב 1:", "יום 2:", "Day 1:", "Week 1:"
+    if (/^(?:שלב|יום|חלק|פרק|שבוע|מודול|נושא|day|step|week|part|module|chapter|topic)\s*\d+[:\.\-–—\s]/i.test(trimmed)) return true;
+    // Checkbox items: "- [ ]", "* [ ]"
+    if (/^(?:[-*•]\s*)?\[[ xXvV✓✔]?\]\s+/i.test(trimmed)) return true;
+    // Standard numbered lists: "1. ", "2) "
+    if (/^\d+[\.\)]\s+/.test(trimmed)) return true;
+    // Bullet items if formatted: "- ", "* ", "• "
+    if (/^[-*•]\s+/.test(trimmed)) return true;
+    return false;
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    // Check if line represents a document title rather than a step (e.g. first line with # Document Title)
+    if (blocks.length === 0 && !currentBlock && /^#\s+/.test(line)) {
+      continue;
+    }
+
+    if (isHeadingLine(line)) {
+      if (currentBlock) {
+        blocks.push(currentBlock);
+      }
+      currentBlock = {
+        titleLine: line,
+        bodyLines: []
+      };
+    } else {
+      if (currentBlock) {
+        currentBlock.bodyLines.push(line);
+      } else {
+        currentBlock = {
+          titleLine: line,
+          bodyLines: []
+        };
+      }
+    }
+  }
+
+  if (currentBlock) {
+    blocks.push(currentBlock);
+  }
+
+  blocks.forEach((block, idx) => {
+    let rawTitle = block.titleLine;
+    let description = block.bodyLines.join(' ').trim() || undefined;
+
+    // 1. Remove markdown header symbols
+    rawTitle = rawTitle.replace(/^#{1,4}\s+/, '').trim();
+
+    // 2. Remove checkbox markers
+    rawTitle = rawTitle.replace(/^(?:[-*•]\s*)?\[[ xXvV✓✔]?\]\s*/i, '').trim();
+
+    // 3. Remove leading bullet or list numbers
+    rawTitle = rawTitle.replace(/^[-*•]\s+/, '').trim();
+    rawTitle = rawTitle.replace(/^\d+[\.\)]\s+/, '').trim();
+
+    // 4. Extract duration from title or description
     let durationMinutes = 20;
-    const durMatch = cleanLine.match(/(\d+)\s*(דק'|דקות|דקה|m|mins?|minutes)/i);
+    const durMatch = (rawTitle + ' ' + (description || '')).match(
+      /(?:⏱️\s*)?\(?\s*(\d+(?:\.\d+)?)\s*(?:דק'|דקות|דקה|m|mins?|minutes|שעות|שעה|hours|hr|h)\s*\)?/i
+    );
     if (durMatch && durMatch[1]) {
-      durationMinutes = parseInt(durMatch[1], 10);
+      const val = parseFloat(durMatch[1]);
+      if (/שעות|שעה|hours|hr|h/i.test(durMatch[0])) {
+        durationMinutes = Math.round(val * 60);
+      } else {
+        durationMinutes = Math.round(val);
+      }
+      rawTitle = rawTitle.replace(durMatch[0], '').trim();
     }
 
-    // Split title and description if separated by ":" or "-"
-    let title = cleanLine;
-    let description: string | undefined = undefined;
-
-    if (cleanLine.includes(' - ')) {
-      const parts = cleanLine.split(' - ');
-      title = parts[0].trim();
-      description = parts.slice(1).join(' - ').trim();
-    } else if (cleanLine.includes(': ')) {
-      const parts = cleanLine.split(': ');
-      title = parts[0].trim();
-      description = parts.slice(1).join(': ').trim();
+    // 5. If title has inline description separated by " - " or ": "
+    if (!description) {
+      if (rawTitle.includes(' - ')) {
+        const parts = rawTitle.split(' - ');
+        rawTitle = parts[0].trim();
+        description = parts.slice(1).join(' - ').trim();
+      } else if (rawTitle.includes(': ') && rawTitle.indexOf(': ') > 3) {
+        const colonIdx = rawTitle.indexOf(': ');
+        const prefix = rawTitle.substring(0, colonIdx);
+        if (!/^(?:שלב|יום|חלק|פרק|שבוע|מודול|day|step|part|module)\s*\d+$/i.test(prefix)) {
+          rawTitle = prefix.trim();
+          description = rawTitle.substring(colonIdx + 2).trim();
+        }
+      }
     }
 
-    return {
-      id: `stg-${idx + 1}-${Date.now()}`,
-      title,
-      description,
-      durationMinutes
-    };
+    rawTitle = rawTitle.replace(/^[:\-–—]\s*/, '').replace(/\s*[:\-–—]$/, '').trim();
+
+    if (rawTitle) {
+      stages.push({
+        id: `stg-${idx + 1}-${Date.now()}`,
+        title: rawTitle,
+        description,
+        durationMinutes
+      });
+    }
   });
+
+  return stages;
 };
 
-// Decompose plan into sub-tasks based on the link, title, and optional pasted notes
+// Backward-compatible alias
+export const parseRawStagesText = parsePlanContentToStages;
+
+export const generateGenericStages = (planTitle: string): NotebookStage[] => {
+  const baseTitle = planTitle.trim() || 'תוכנית למידה';
+  return [
+    {
+      id: `stg-1-${Date.now()}`,
+      title: `שלב 1: מבוא ועקרונות יסוד ב-${baseTitle} (לדוגמה)`,
+      description: `קריאת חומרי הפתיחה ומיפוי מטרות מתוך הקובץ במחברת NotebookLM.`,
+      durationMinutes: 20
+    },
+    {
+      id: `stg-2-${Date.now() + 1}`,
+      title: `שלב 2: סקירת מושגי מפתח ותרגול ראשוני (לדוגמה)`,
+      description: `העמקה בפרקים הראשונים של התוכנית ותרגול מודרך.`,
+      durationMinutes: 20
+    },
+    {
+      id: `stg-3-${Date.now() + 2}`,
+      title: `שלב 3: יישום מעשי ופתרון דוגמאות מתוך המחברת (לדוגמה)`,
+      description: `שאילת שאלות ב-NotebookLM וקבלת הסברים מעמיקים על מקרי בוחן.`,
+      durationMinutes: 25
+    },
+    {
+      id: `stg-4-${Date.now() + 3}`,
+      title: `שלב 4: תרגול מתקדם והתמודדות עם שאלות מורכבות (לדוגמה)`,
+      description: `מעבר על החלק המתקדם בתוכנית העבודה ותרגול עצמאי.`,
+      durationMinutes: 25
+    },
+    {
+      id: `stg-5-${Date.now() + 4}`,
+      title: `שלב 5: יישום בעולם האמיתי ובסביבת העבודה (לדוגמה)`,
+      description: `חיבור החומר הנלמד למשימות יומיומיות ותרגול מעשי.`,
+      durationMinutes: 30
+    },
+    {
+      id: `stg-6-${Date.now() + 5}`,
+      title: `שלב 6: חזרה, חידוד דגשים ומשוב ב-NotebookLM (לדוגמה)`,
+      description: `שיחה עם המודל במחברת לצורך בדיקת הבנה וקבלת משוב על התרגול.`,
+      durationMinutes: 25
+    }
+  ];
+};
+
+// Decompose plan into sub-tasks based on link, title, optional pasted notes, and fallback option
 export const decomposeNotebookPlan = (
   url: string,
   planTitle: string,
-  rawContent?: string
+  rawContent?: string,
+  allowGenericFallback: boolean = false
 ): NotebookStage[] => {
-  // If raw content was pasted, parse it directly
+  // If raw content was pasted, parse it directly with the smart parser
   if (rawContent && rawContent.trim()) {
-    const parsed = parseRawStagesText(rawContent.trim());
+    const parsed = parsePlanContentToStages(rawContent.trim());
     if (parsed.length > 0) return parsed;
   }
 
@@ -190,50 +318,10 @@ export const decomposeNotebookPlan = (
     return INITIAL_ASSERTIVE_NOTEBOOK.stages;
   }
 
-  // Dynamic pedagogical breakdown for any GoogleLM topic
-  const baseTitle = planTitle.trim() || 'תוכנית למידה';
-  return [
-    {
-      id: `stg-1-${Date.now()}`,
-      title: `שלב 1: מבוא ועקרונות יסוד ב-${baseTitle}`,
-      description: `קריאת חומרי הפתיחה ומיפוי מטרות מתוך הקובץ במחברת NotebookLM.`,
-      durationMinutes: 20
-    },
-    {
-      id: `stg-2-${Date.now() + 1}`,
-      title: `שלב 2: סקירת מושגי מפתח ותרגול ראשוני`,
-      description: `העמקה בפרקים הראשונים של התוכנית ותרגול מודרך.`,
-      durationMinutes: 20
-    },
-    {
-      id: `stg-3-${Date.now() + 2}`,
-      title: `שלב 3: יישום מעשי ופתרון דוגמאות מתוך המחברת`,
-      description: `שאילת שאלות ב-NotebookLM וקבלת הסברים מעמיקים על מקרי בוחן.`,
-      durationMinutes: 25
-    },
-    {
-      id: `stg-4-${Date.now() + 3}`,
-      title: `שלב 4: תרגול מתקדם והתמודדות עם שאלות מורכבות`,
-      description: `מעבר על החלק המתקדם בתוכנית העבודה ותרגול עצמאי.`,
-      durationMinutes: 25
-    },
-    {
-      id: `stg-5-${Date.now() + 4}`,
-      title: `שלב 5: יישום בעולם האמיתי ובסביבת העבודה`,
-      description: `חיבור החומר הנלמד למשימות יומיומיות ותרגול מעשי.`,
-      durationMinutes: 30
-    },
-    {
-      id: `stg-6-${Date.now() + 5}`,
-      title: `שלב 6: חזרה, חידוד דגשים ומשוב ב-NotebookLM`,
-      description: `שיחה עם המודל במחברת לצורך בדיקת הבנה וקבלת משוב על התרגול.`,
-      durationMinutes: 25
-    },
-    {
-      id: `stg-7-${Date.now() + 6}`,
-      title: `שלב 7: סקירת התקדמות, כתיבת תובנות והטמעה`,
-      description: `סיכום שבועי של התוכנית וכתיבת נקודות מפתח להמשך.`,
-      durationMinutes: 30
-    }
-  ];
+  // If fallback allowed, return clearly marked generic stages; otherwise return empty
+  if (allowGenericFallback) {
+    return generateGenericStages(planTitle);
+  }
+
+  return [];
 };

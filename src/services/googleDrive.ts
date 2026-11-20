@@ -59,6 +59,69 @@ export const fetchFolderContents = async (
 };
 
 /**
+ * Searches Google Drive for files matching a name query (e.g. plan document name)
+ */
+export const searchDriveFilesByName = async (
+  nameQuery: string,
+  accessToken: string
+): Promise<DriveItem[]> => {
+  const clean = nameQuery.trim().replace(/'/g, "\\'");
+  if (!clean) return [];
+
+  const q = `name contains '${clean}' and trashed = false`;
+  const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(
+    q
+  )}&fields=files(id,name,mimeType,webViewLink,parents,description)&pageSize=10`;
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(
+      errorData.error?.message || `Failed to search Google Drive files: ${response.statusText}`
+    );
+  }
+
+  const data = await response.json();
+  return data.files || [];
+};
+
+/**
+ * Fetches content of a file from Google Drive (supports Google Docs and plain text files)
+ */
+export const fetchDriveFileContent = async (
+  fileId: string,
+  mimeType: string,
+  accessToken: string
+): Promise<{ title: string; content: string }> => {
+  if (mimeType === 'application/vnd.google-apps.document') {
+    const doc = await fetchGoogleDoc(fileId, accessToken);
+    return {
+      title: doc?.title || '',
+      content: doc?.rawText || ''
+    };
+  }
+
+  let url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+  if (mimeType.startsWith('application/vnd.google-apps.')) {
+    url = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`;
+  }
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+
+  if (res.ok) {
+    const text = await res.text();
+    return { title: '', content: text };
+  }
+
+  throw new Error(`Failed to fetch file content (${res.status})`);
+};
+
+/**
  * Recursively scans the app folder to discover milestones (subfolders like "Machine Learning")
  * and goals documents/links (especially Google Docs: application/vnd.google-apps.document)
  */

@@ -11,7 +11,11 @@ import {
   ArrowDownToLine,
   BookOpen,
   Layers,
-  Wand2
+  Wand2,
+  Search,
+  FileText,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import {
   LearningNotebook,
@@ -20,8 +24,17 @@ import {
   addLearningNotebook,
   updateLearningNotebook,
   deleteLearningNotebook,
-  decomposeNotebookPlan
+  decomposeNotebookPlan,
+  parsePlanContentToStages,
+  generateGenericStages,
+  INITIAL_ASSERTIVE_NOTEBOOK
 } from '../services/notebookStorage';
+import {
+  searchDriveFilesByName,
+  fetchDriveFileContent,
+  fetchGoogleDoc
+} from '../services/googleDrive';
+import { getStoredToken } from '../services/googleAuth';
 
 interface NotebookManagerModalProps {
   isOpen: boolean;
@@ -55,6 +68,11 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
   const [decomposedStages, setDecomposedStages] = useState<NotebookStage[]>([]);
   const [hasDecomposed, setHasDecomposed] = useState(false);
   const [scheduleToWeekImmediately, setScheduleToWeekImmediately] = useState(true);
+  const [isSearchingDrive, setIsSearchingDrive] = useState(false);
+  const [decomposeNotice, setDecomposeNotice] = useState<{
+    type: 'success' | 'warning' | 'error';
+    message: string;
+  } | null>(null);
 
   // Edit Stage State
   const [editingStageId, setEditingStageId] = useState<string | null>(null);
@@ -117,20 +135,125 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
     window.open(target, '_blank');
   };
 
-  // 3. Decompose plan into sub-tasks based on the link and plan file
-  const handleDecomposePlan = () => {
-    const effectiveUrl = newUrl.trim() || 'https://notebooklm.link.google/0Uhj6QVmB40d';
-    const effectivePlanTitle = planFileName.trim() || newTitle.trim() || 'Daily assertive practice plan';
+  // 3. Decompose plan into real sub-tasks based on pasted text, Drive search, or Doc URL
+  const handleDecomposePlan = async (forceGenericFallback = false) => {
+    setDecomposeNotice(null);
+    setIsSearchingDrive(true);
 
-    const stages = decomposeNotebookPlan(effectiveUrl, effectivePlanTitle, rawPastedContent);
-    setDecomposedStages(stages);
-    setHasDecomposed(true);
+    try {
+      // 1. Check if user already pasted content into the textarea
+      if (rawPastedContent.trim()) {
+        const parsed = parsePlanContentToStages(rawPastedContent);
+        if (parsed.length > 0) {
+          setDecomposedStages(parsed);
+          setHasDecomposed(true);
+          setDecomposeNotice({
+            type: 'success',
+            message: `✓ חולצו ${parsed.length} שלבים אמיתיים מתוך תוכן התוכנית שהודבק!`
+          });
+          setIsSearchingDrive(false);
+          return;
+        }
+      }
 
-    if (!newTitle.trim()) {
-      setNewTitle(effectivePlanTitle);
-    }
-    if (!newMilestone.trim()) {
-      setNewMilestone(`${effectivePlanTitle} (GoogleLM)`);
+      // 2. Check if a Google Doc URL was pasted in newUrl or planFileName
+      const combinedInputs = `${newUrl} ${planFileName}`;
+      const docIdMatch = combinedInputs.match(/(?:document\/d\/|open\?id=)([a-zA-Z0-9-_]{20,})/);
+      const token = getStoredToken();
+
+      if (docIdMatch && token?.access_token) {
+        const docId = docIdMatch[1];
+        const fetchedDoc = await fetchGoogleDoc(docId, token.access_token);
+        if (fetchedDoc && fetchedDoc.rawText) {
+          const parsed = parsePlanContentToStages(fetchedDoc.rawText);
+          if (parsed.length > 0) {
+            setDecomposedStages(parsed);
+            setHasDecomposed(true);
+            setRawPastedContent(fetchedDoc.rawText);
+            if (!newTitle.trim()) setNewTitle(fetchedDoc.title || 'תוכנית עבודה');
+            setDecomposeNotice({
+              type: 'success',
+              message: `✓ מסמך Google Docs ("${fetchedDoc.title || 'תוכנית'}") נטען בהצלחה וחולצו ${parsed.length} שלבים אמיתיים!`
+            });
+            setIsSearchingDrive(false);
+            return;
+          }
+        }
+      }
+
+      // 3. Search Google Drive by planFileName
+      const effectiveFileName = planFileName.trim();
+      if (effectiveFileName && token?.access_token) {
+        const matches = await searchDriveFilesByName(effectiveFileName, token.access_token);
+        if (matches.length > 0) {
+          const bestMatch = matches.find(m => m.mimeType === 'application/vnd.google-apps.document') || matches[0];
+          const contentObj = await fetchDriveFileContent(bestMatch.id, bestMatch.mimeType, token.access_token);
+          if (contentObj.content && contentObj.content.trim()) {
+            const parsed = parsePlanContentToStages(contentObj.content);
+            if (parsed.length > 0) {
+              setDecomposedStages(parsed);
+              setHasDecomposed(true);
+              setRawPastedContent(contentObj.content);
+              if (!newTitle.trim()) setNewTitle(bestMatch.name);
+              setDecomposeNotice({
+                type: 'success',
+                message: `✓ קובץ התוכנית "${bestMatch.name}" אותר ב-Google Drive וחולצו ${parsed.length} שלבים אמיתיים!`
+              });
+              setIsSearchingDrive(false);
+              return;
+            }
+          }
+        }
+      }
+
+      // 4. If this is the default Assertive Practice Plan
+      if (
+        newUrl.includes('0Uhj6QVmB40d') ||
+        planFileName.toLowerCase().includes('assertive') ||
+        newTitle.toLowerCase().includes('assertive') ||
+        planFileName.includes('אסרטיב')
+      ) {
+        const stages = INITIAL_ASSERTIVE_NOTEBOOK.stages;
+        setDecomposedStages(stages);
+        setHasDecomposed(true);
+        setDecomposeNotice({
+          type: 'success',
+          message: `✓ נטענו 7 שלבי התרגול המובנים של תוכנית התקשורת האסרטיבית!`
+        });
+        setIsSearchingDrive(false);
+        return;
+      }
+
+      // 5. If user clicked to force generic fallback
+      if (forceGenericFallback) {
+        const stages = generateGenericStages(effectiveFileName || newTitle || 'תוכנית למידה');
+        setDecomposedStages(stages);
+        setHasDecomposed(true);
+        setDecomposeNotice({
+          type: 'warning',
+          message: `נוצרו שלבים גנריים לדוגמה. מומלץ להעתיק את תוכן התוכנית האמיתית מ-NotebookLM ולהדביק בתיבה.`
+        });
+        setIsSearchingDrive(false);
+        return;
+      }
+
+      // 6. Not found in Drive and no content pasted
+      setDecomposedStages([]);
+      setHasDecomposed(false);
+      setDecomposeNotice({
+        type: 'error',
+        message: effectiveFileName
+          ? `לא נמצא קובץ בשם "${effectiveFileName}" ב-Google Drive. כדי לפרק את התוכנית האמיתית: פתחי את המחברת ב-NotebookLM, העתיקי את הטקסט של התוכנית (Ctrl+C / העתק הערה), והדביקי כאן בתיבת הטקסט.`
+          : `נא להדביק את תוכן התוכנית מתוך NotebookLM בתיבת הטקסט למטה, או לציין שם קובץ קיים ב-Google Drive.`
+      });
+    } catch (err: any) {
+      console.warn('Decompose plan error:', err);
+      setDecomposeNotice({
+        type: 'error',
+        message: `שגיאה בחיפוש הקובץ ב-Google Drive: ${err.message || 'שגיאת תקשורת'}. באפשרותך להעתיק ולהדביק את תוכן התוכנית ישירות מ-NotebookLM.`
+      });
+    } finally {
+      setIsSearchingDrive(false);
     }
   };
 
@@ -141,7 +264,7 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
 
     let finalStages = decomposedStages;
     if (finalStages.length === 0) {
-      finalStages = decomposeNotebookPlan(newUrl, newTitle, rawPastedContent);
+      finalStages = decomposeNotebookPlan(newUrl, newTitle, rawPastedContent, true);
     }
 
     const created = addLearningNotebook({
@@ -783,20 +906,21 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                 </div>
 
                 <p className="text-[11px] text-indigo-800/80 dark:text-indigo-300/80">
-                  בתוך המחברת, אתרי את קובץ או הערת תוכנית הפעולה (למשל: <strong>Daily assertive practice plan</strong>):
+                  בתוך המחברת, אתרי את קובץ או הערת תוכנית הפעולה (למשל: <strong>Daily assertive practice plan</strong>). באפשרותך לציין את שם הקובץ (האפליקציה תחפש אותו ב-Google Drive) או להדביק ישירות את תוכן התוכנית:
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      שם קובץ התוכנית / הנושא במחברת
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
+                      <Search className="w-3 h-3 text-indigo-500" />
+                      <span>שם קובץ התוכנית ב-Google Drive / NotebookLM</span>
                     </label>
                     <input
                       type="text"
                       value={planFileName}
                       onChange={(e) => setPlanFileName(e.target.value)}
-                      placeholder="למשל: Daily assertive practice plan"
-                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none"
+                      placeholder="למשל: Daily assertive practice plan או שם קובץ Doc"
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
                     />
                   </div>
 
@@ -809,21 +933,27 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                       value={newMilestone}
                       onChange={(e) => setNewMilestone(e.target.value)}
                       placeholder="למשל: Daily Assertive Practice (GoogleLM)"
-                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none"
+                      className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    הדבקת תוכן התוכנית (אופציונלי - לפירוק מדויק)
+                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1">
+                      <FileText className="w-3 h-3 text-purple-500" />
+                      <span>הדבקת תוכן התוכנית (מומלץ לפירוק מדויק ישירות מ-NotebookLM)</span>
+                    </span>
+                    <span className="text-[10px] text-purple-600 dark:text-purple-400 font-normal">
+                      תומך בפורמט Markdown, שלבים, ימים ומשכי זמן
+                    </span>
                   </label>
                   <textarea
                     value={rawPastedContent}
                     onChange={(e) => setRawPastedContent(e.target.value)}
-                    rows={2}
-                    placeholder="באפשרותך להעתיק ולהדביק את שלבי התוכנית מתוך הקובץ שבמחברת..."
-                    className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none"
+                    rows={3}
+                    placeholder="העתיקי את הטקסט של תוכנית הפעולה מ-NotebookLM והדביקי כאן... המערכת תפרק אותו אוטומטית לשלבים אמיתיים לפי ימים, שלבים או כותרות."
+                    className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/30"
                   />
                 </div>
               </div>
@@ -832,15 +962,63 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
               <div className="space-y-3">
                 <button
                   type="button"
-                  onClick={handleDecomposePlan}
-                  className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 active:scale-98 text-white font-extrabold text-xs sm:text-sm shadow-md shadow-purple-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  onClick={() => handleDecomposePlan(false)}
+                  disabled={isSearchingDrive}
+                  className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 active:scale-98 disabled:opacity-60 text-white font-extrabold text-xs sm:text-sm shadow-md shadow-purple-600/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
                 >
-                  <Wand2 className="w-4 h-4 stroke-[2.5]" />
-                  <span>פרק את התוכנית לתתי משימות (בהתאם ללינק) 🪄</span>
+                  {isSearchingDrive ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>מאתר את הקובץ ב-Google Drive ומפרק שלבים...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="w-4 h-4 stroke-[2.5]" />
+                      <span>פרק את התוכנית האמיתית לתתי משימות 🪄</span>
+                    </>
+                  )}
                 </button>
 
+                {/* Decompose feedback message / alert */}
+                {decomposeNotice && (
+                  <div
+                    className={`p-3.5 rounded-2xl border text-xs leading-relaxed space-y-2 ${
+                      decomposeNotice.type === 'success'
+                        ? 'bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-200'
+                        : decomposeNotice.type === 'warning'
+                        ? 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200'
+                        : 'bg-rose-50/90 dark:bg-rose-950/40 border-rose-300 dark:border-rose-700 text-rose-900 dark:text-rose-200'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <div className="flex-1 font-medium">{decomposeNotice.message}</div>
+                    </div>
+
+                    {decomposeNotice.type === 'error' && (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={handleOpenNotebookLMForPlan}
+                          className="px-2.5 py-1 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <BookOpen className="w-3 h-3" />
+                          <span>פתח את NotebookLM להעתקת התוכנית ↗</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDecomposePlan(true)}
+                          className="px-2.5 py-1 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-semibold text-[11px] cursor-pointer transition-colors"
+                        >
+                          <span>צור שלבי תרגול לדוגמה בכל זאת</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Decomposed sub-tasks preview */}
-                {hasDecomposed && (
+                {hasDecomposed && decomposedStages.length > 0 && (
                   <div className="p-3.5 bg-white dark:bg-slate-850 rounded-2xl border-2 border-emerald-400 dark:border-emerald-600 space-y-2.5 animate-in fade-in duration-200">
                     <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-700">
                       <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-300">
