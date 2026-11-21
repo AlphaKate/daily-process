@@ -1,5 +1,7 @@
 // Storage and management for GoogleLM / NotebookLM learning notebooks and their curriculum stages
 
+import { GoalLifecycleStatus } from '../types';
+
 export interface NotebookStage {
   id: string;
   title: string;
@@ -14,6 +16,7 @@ export interface LearningNotebook {
   milestoneTitle: string; // e.g. "Daily Assertive Practice (GoogleLM)"
   description?: string;
   stages: NotebookStage[];
+  status?: GoalLifecycleStatus;
   createdAt: string;
   updatedAt: string;
 }
@@ -26,6 +29,7 @@ export const INITIAL_ASSERTIVE_NOTEBOOK: LearningNotebook = {
   url: 'https://notebooklm.link.google/0Uhj6QVmB40d',
   milestoneTitle: 'Daily Assertive Practice (GoogleLM)',
   description: 'תוכנית תרגול יומית לתקשורת אסרטיבית, הצבת גבולות, עמידה בלחצים והטמעה מעשית.',
+  status: 'active',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   stages: [

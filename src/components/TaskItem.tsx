@@ -15,16 +15,20 @@ import {
   ListTodo,
   ChevronDown,
   ChevronUp,
-  Brain
+  Brain,
+  ArrowRightLeft
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { sanitizeUrl } from '../services/securitySanitizer';
+import { QuickRescheduleSheet } from './QuickRescheduleSheet';
 
-interface TaskItemProps {
+export interface TaskItemProps {
   task: Task;
   onToggleComplete: (task: Task) => void;
   onEdit: (task: Task) => void;
   onDeleteRequest: (task: Task) => void;
+  onReschedule?: (task: Task, targetDate: string) => void;
+  currentDate?: string;
   forceExpanded?: boolean;
 }
 
@@ -106,10 +110,13 @@ export const TaskItem: React.FC<TaskItemProps> = ({
   onToggleComplete,
   onEdit,
   onDeleteRequest,
+  onReschedule,
+  currentDate,
   forceExpanded
 }) => {
   const [isExpanded, setIsExpanded] = useState<boolean>(forceExpanded ?? false);
   const [justCompleted, setJustCompleted] = useState(false);
+  const [isRescheduleSheetOpen, setIsRescheduleSheetOpen] = useState(false);
 
   useEffect(() => {
     if (forceExpanded !== undefined) {
@@ -155,6 +162,19 @@ export const TaskItem: React.FC<TaskItemProps> = ({
     }
 
     onToggleComplete(task);
+  };
+
+  const handleReschedule = (rescheduledTask: Task, targetDate: string) => {
+    if (onReschedule) {
+      onReschedule(rescheduledTask, targetDate);
+    } else {
+      // Fallback: update task date and call onEdit
+      onEdit({
+        ...rescheduledTask,
+        date: targetDate,
+        updatedAt: new Date().toISOString()
+      });
+    }
   };
 
   const getCategoryStyles = () => {
@@ -213,9 +233,11 @@ export const TaskItem: React.FC<TaskItemProps> = ({
     shouldShowDocUrl
   );
 
+  const effectiveCurrentDate = currentDate || task.date || new Date().toISOString().split('T')[0];
+
   return (
     <div
-      className={`group relative bg-white dark:bg-slate-800/90 rounded-2xl p-3 sm:p-4 shadow-xs hover:shadow-md border border-slate-200/80 dark:border-slate-700/80 transition-all duration-200 ${
+      className={`group relative bg-white dark:bg-slate-800/90 rounded-2xl p-3 sm:p-4 shadow-xs hover:shadow-md border border-slate-200/80 dark:border-slate-700/80 transition-all duration-200 max-w-full overflow-hidden ${
         categoryStyle.border
       } ${
         task.completed
@@ -225,7 +247,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
           : ''
       }`}
     >
-      <div className="flex items-start gap-2.5 sm:gap-3">
+      <div className="flex items-start gap-2.5 sm:gap-3 max-w-full min-w-0">
         {/* Custom Accessible Checkbox */}
         <button
           type="button"
@@ -241,19 +263,19 @@ export const TaskItem: React.FC<TaskItemProps> = ({
         </button>
 
         {/* Content Details */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 overflow-hidden">
           {/* Top Line: Tags, Time & Quick Indicators */}
           <div className="flex items-center flex-wrap gap-1.5 sm:gap-2 mb-1">
             {/* Category Tag */}
             <span
-              className={`text-xs font-bold px-2.5 py-0.5 rounded-full border ${categoryStyle.badgeBg}`}
+              className={`text-xs font-bold px-2.5 py-0.5 rounded-full border shrink-0 ${categoryStyle.badgeBg}`}
             >
               {categoryStyle.badgeText}
             </span>
 
             {/* Google Calendar badge */}
             {isCalendarTask && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shadow-2xs">
+              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shadow-2xs shrink-0">
                 <Calendar className="w-3.5 h-3.5 text-blue-500" />
                 <span>יומן Google</span>
               </span>
@@ -261,7 +283,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
 
             {/* Microsoft To Do badge */}
             {isMsToDo && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-950/70 dark:text-sky-300 border border-sky-200 dark:border-sky-800 shadow-2xs">
+              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-950/70 dark:text-sky-300 border border-sky-200 dark:border-sky-800 shadow-2xs shrink-0">
                 <ListTodo className="w-3.5 h-3.5 text-sky-500" />
                 <span>Microsoft To Do</span>
               </span>
@@ -270,7 +292,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
             {/* Calendar meeting time pill (e.g. '14:00 (45 דק׳)' or 'כל היום') */}
             {isCalendarTask && (
               task.time ? (
-                <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold px-2.5 py-0.5 rounded-md bg-blue-50/90 text-blue-800 dark:bg-blue-950/80 dark:text-blue-200 border border-blue-200/90 dark:border-blue-800 shadow-2xs">
+                <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-bold px-2.5 py-0.5 rounded-md bg-blue-50/90 text-blue-800 dark:bg-blue-950/80 dark:text-blue-200 border border-blue-200/90 dark:border-blue-800 shadow-2xs shrink-0">
                   <Clock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                   <span>
                     {task.time}
@@ -278,7 +300,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
                   </span>
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 text-xs sm:text-sm font-semibold px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 dark:bg-slate-700/60 dark:text-slate-300 border border-slate-200 dark:border-slate-600">
+                <span className="inline-flex items-center gap-1 text-xs sm:text-sm font-semibold px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 dark:bg-slate-700/60 dark:text-slate-300 border border-slate-200 dark:border-slate-600 shrink-0">
                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
                   <span>כל היום</span>
                 </span>
@@ -287,7 +309,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
 
             {/* Non-calendar duration pill (⏱️ 45 דק׳) */}
             {!isCalendarTask && task.durationMinutes && (
-              <span className="inline-flex items-center gap-1 text-xs sm:text-sm font-semibold px-2.5 py-0.5 rounded-md bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80">
+              <span className="inline-flex items-center gap-1 text-xs sm:text-sm font-semibold px-2.5 py-0.5 rounded-md bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80 shrink-0">
                 <span>⏱️</span>
                 <span>{task.durationMinutes} דק׳</span>
               </span>
@@ -295,7 +317,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
 
             {/* Rollover badge if moved from previous day */}
             {task.rolledOverFrom && !task.completed && (
-              <span className="flex items-center gap-1 text-xs font-medium px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+              <span className="flex items-center gap-1 text-xs font-medium px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800 shrink-0">
                 <RotateCcw className="w-3 h-3" />
                 נדחה מ-{task.rolledOverFrom}
               </span>
@@ -303,7 +325,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
 
             {/* Non-calendar time badge */}
             {!isCalendarTask && task.time && (
-              <span className="flex items-center gap-1 text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/70 px-2.5 py-0.5 rounded-md">
+              <span className="flex items-center gap-1 text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/70 px-2.5 py-0.5 rounded-md shrink-0">
                 <Clock className="w-3.5 h-3.5 text-slate-400" />
                 {task.time}
               </span>
@@ -311,7 +333,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
 
             {/* Compact Indicator Icons (if collapsed and has attachments) */}
             {!isExpanded && (
-              <div className="flex items-center gap-1 text-slate-400 dark:text-slate-500 text-xs">
+              <div className="flex items-center gap-1 text-slate-400 dark:text-slate-500 text-xs shrink-0">
                 {meetingInfo && (
                   <span
                     className="p-0.5 px-1.5 rounded-md bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 text-[10px] font-semibold flex items-center gap-1"
@@ -391,10 +413,10 @@ export const TaskItem: React.FC<TaskItemProps> = ({
           {/* Task Title (Clicking title expands/collapses if has details) */}
           <div
             onClick={() => hasDetails && setIsExpanded(prev => !prev)}
-            className={`cursor-pointer select-none ${hasDetails ? 'hover:text-emerald-600 dark:hover:text-emerald-400' : ''}`}
+            className={`cursor-pointer select-none break-words ${hasDetails ? 'hover:text-emerald-600 dark:hover:text-emerald-400' : ''}`}
           >
             <h3
-              className={`text-base sm:text-lg font-bold leading-snug transition-colors ${
+              className={`text-sm sm:text-base font-bold leading-snug transition-colors break-words ${
                 task.completed
                   ? 'line-through text-slate-400 dark:text-slate-500 font-normal'
                   : 'text-slate-900 dark:text-slate-100'
@@ -409,7 +431,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
             <div className="mt-2.5 pt-2.5 border-t border-slate-100 dark:border-slate-700/60 space-y-2.5 animate-in fade-in duration-150">
               {/* Optional Description */}
               {task.description && (
-                <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-line leading-relaxed bg-slate-50/60 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-line leading-relaxed bg-slate-50/60 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800 break-words">
                   {task.description}
                 </p>
               )}
@@ -450,7 +472,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
                   {task.milestoneTitle && (
                     <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold shadow-2xs">
                       <Milestone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                      <span className="truncate max-w-[240px] sm:max-w-none">{task.milestoneTitle}</span>
+                      <span className="truncate max-w-[200px] sm:max-w-none">{task.milestoneTitle}</span>
                     </div>
                   )}
 
@@ -485,12 +507,25 @@ export const TaskItem: React.FC<TaskItemProps> = ({
           )}
         </div>
 
-        {/* Action Buttons (Edit, Delete & Expand Toggle) */}
+        {/* Action Buttons (Edit, Delete, Reschedule & Expand Toggle) */}
         <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
+          {/* Quick Reschedule Button for Goal Tasks */}
+          {isGoal && !task.completed && (
+            <button
+              type="button"
+              onClick={() => setIsRescheduleSheetOpen(true)}
+              className="p-1.5 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded-xl transition-all cursor-pointer"
+              title="שיבוץ מהיר בטאץ' (היום, מחר, בנק או יום אחר)"
+              aria-label="שיבוץ מהיר"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => onEdit(task)}
-            className="p-1.5 text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 rounded-xl transition-colors"
+            className="p-1.5 text-slate-400 hover:text-slate-700 dark:text-slate-500 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 rounded-xl transition-colors cursor-pointer"
             title="ערוך משימה"
           >
             <Edit2 className="w-3.5 h-3.5" />
@@ -498,7 +533,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
           <button
             type="button"
             onClick={() => onDeleteRequest(task)}
-            className="p-1.5 text-slate-400 hover:text-rose-600 dark:text-slate-500 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors"
+            className="p-1.5 text-slate-400 hover:text-rose-600 dark:text-slate-500 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
             title="מחק משימה (מחייב אישור)"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -509,7 +544,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
             <button
               type="button"
               onClick={() => setIsExpanded(prev => !prev)}
-              className="p-1.5 text-slate-400 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 rounded-xl transition-transform"
+              className="p-1.5 text-slate-400 hover:text-slate-800 dark:text-slate-500 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 rounded-xl transition-transform cursor-pointer"
               title={isExpanded ? 'כווץ פרטים' : 'הרחב פרטים מלאים'}
               aria-expanded={isExpanded}
             >
@@ -522,6 +557,17 @@ export const TaskItem: React.FC<TaskItemProps> = ({
           )}
         </div>
       </div>
+
+      {/* Quick Reschedule Bottom Sheet / Modal */}
+      {isRescheduleSheetOpen && (
+        <QuickRescheduleSheet
+          isOpen={isRescheduleSheetOpen}
+          task={task}
+          currentDate={effectiveCurrentDate}
+          onClose={() => setIsRescheduleSheetOpen(false)}
+          onReschedule={handleReschedule}
+        />
+      )}
     </div>
   );
 };

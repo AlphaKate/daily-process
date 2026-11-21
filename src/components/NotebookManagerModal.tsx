@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Task } from '../types';
+import { Task, GoalLifecycleStatus } from '../types';
 import {
   X,
   Brain,
@@ -24,8 +24,13 @@ import {
   Filter,
   TrendingUp,
   Sparkles,
-  FastForward
+  FastForward,
+  Rocket,
+  Archive,
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
+import { ReDecomposeModal } from './ReDecomposeModal';
 import {
   LearningNotebook,
   NotebookStage,
@@ -124,6 +129,14 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
     const list = getStoredNotebooks();
     return list.length > 0 ? list[0].id : '';
   });
+
+  // Program Lifecycle Status Tab (Active, Incubator / Drafts, Archived)
+  const [programStatusTab, setProgramStatusTab] = useState<'active' | 'in_preparation' | 'archived'>('active');
+  const [reDecomposeNotebook, setReDecomposeNotebook] = useState<LearningNotebook | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<LearningNotebook | null>(null);
+  const [cleanPurgeOption, setCleanPurgeOption] = useState<boolean>(true);
+  const [newProgramStatus, setNewProgramStatus] = useState<GoalLifecycleStatus>('active');
+  const [globalNotice, setGlobalNotice] = useState<{ type: 'success' | 'info' | 'error'; message: string } | null>(null);
 
   // Add Notebook Form Wizard State
   const [newTitle, setNewTitle] = useState('');
@@ -557,11 +570,12 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
       url: newUrl.trim() || 'https://notebooklm.google.com/',
       milestoneTitle: newMilestone.trim() || `${newTitle.trim()} (GoogleLM)`,
       description: newDescription.trim() || (planFileName ? `מתוך תוכנית העבודה: ${planFileName}` : undefined),
-      stages: finalStages
+      stages: finalStages,
+      status: newProgramStatus
     });
 
-    // Schedule tasks based on user distribution configuration
-    if (finalStages.length > 0) {
+    // Schedule tasks based on user distribution configuration (only if active or explicit)
+    if (finalStages.length > 0 && newProgramStatus !== 'in_preparation') {
       const now = new Date().toISOString();
       const newTasks: Task[] = [];
 
@@ -633,7 +647,16 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
 
     refreshNotebooks();
     setSelectedNotebookId(created.id);
-    setActiveTab('view_edit');
+    if (newProgramStatus === 'in_preparation') {
+      setProgramStatusTab('in_preparation');
+      setActiveTab('list');
+      setGlobalNotice({
+        type: 'success',
+        message: `תוכנית "${created.title}" נשמרה בהצלחה בחממת היעדים בהכנה 💡!`
+      });
+    } else {
+      setActiveTab('view_edit');
+    }
 
     // Reset Form
     setNewTitle('');
@@ -695,22 +718,199 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
     refreshNotebooks();
   };
 
-  // Delete whole notebook
-  const handleDeleteNotebook = (id: string, title: string) => {
-    if (window.confirm(`האם את בטוחה שברצונך להסיר את המחברת "${title}" מרשימת המחברות?`)) {
-      const remaining = deleteLearningNotebook(id);
-      setNotebooks(remaining);
-      if (remaining.length > 0) {
-        setSelectedNotebookId(remaining[0].id);
+  // Activate Draft / In Preparation Program
+  const handleActivateDraft = (nb: LearningNotebook) => {
+    updateLearningNotebook(nb.id, { status: 'active' });
+    refreshNotebooks();
+
+    // Distribute uncompleted stages into the upcoming week
+    if (nb.stages && nb.stages.length > 0) {
+      const distributedDates = calculateDistributedDates(
+        nb.stages.length,
+        currentDate,
+        [0, 1, 2, 3, 4]
+      );
+      const now = new Date().toISOString();
+      const tasksToSchedule: Task[] = nb.stages.map((stg, idx) => ({
+        id: `nb-act-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 4)}`,
+        title: stg.title,
+        description: stg.description,
+        category: 'goals',
+        completed: false,
+        date: distributedDates[idx] || currentDate,
+        durationMinutes: stg.durationMinutes || 20,
+        milestoneTitle: nb.milestoneTitle || nb.title,
+        link: nb.url,
+        createdAt: now,
+        updatedAt: now
+      }));
+      onScheduleStage(tasksToSchedule);
+    }
+
+    setProgramStatusTab('active');
+    setGlobalNotice({
+      type: 'success',
+      message: `תוכנית "${nb.title}" הופעלה בהצלחה 🚀! השלבים שובצו לסדר היום.`
+    });
+  };
+
+  // Archive / Unarchive program
+  const handleArchiveNotebook = (id: string) => {
+    updateLearningNotebook(id, { status: 'archived' });
+    refreshNotebooks();
+    setGlobalNotice({
+      type: 'info',
+      message: 'התוכנית הועברה לארכיון. ניתן להחזירה לפעילות בכל עת.'
+    });
+  };
+
+  const handleUnarchiveNotebook = (id: string) => {
+    updateLearningNotebook(id, { status: 'active' });
+    refreshNotebooks();
+    setProgramStatusTab('active');
+    setGlobalNotice({
+      type: 'success',
+      message: 'התוכנית הוחזרה לתוכניות הפעילות בהצלחה!'
+    });
+  };
+
+  // Clean Delete with Options Modal
+  const handleDeleteRequest = (nb: LearningNotebook) => {
+    setDeleteTarget(nb);
+    setCleanPurgeOption(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (!deleteTarget) return;
+
+    if (cleanPurgeOption) {
+      // Find all tasks matching this notebook and soft-delete them
+      const tasksToSoftDelete = allTasks.filter(t =>
+        !t.isDeleted && (
+          t.milestoneTitle === (deleteTarget.milestoneTitle || deleteTarget.title) ||
+          deleteTarget.stages.some(s => s.title.trim().toLowerCase() === t.title.trim().toLowerCase())
+        )
+      ).map(t => ({
+        ...t,
+        isDeleted: true,
+        updatedAt: new Date().toISOString()
+      }));
+
+      if (tasksToSoftDelete.length > 0) {
+        onScheduleStage(tasksToSoftDelete);
       }
     }
+
+    const remaining = deleteLearningNotebook(deleteTarget.id);
+    setNotebooks(remaining);
+    if (remaining.length > 0) {
+      setSelectedNotebookId(remaining[0].id);
+    }
+    setDeleteTarget(null);
+    setGlobalNotice({
+      type: 'info',
+      message: `התוכנית "${deleteTarget.title}" הוסרה בהצלחה.`
+    });
+  };
+
+  // Apply Recomposition from Google Docs / NotebookLM
+  const handleApplyRecomposition = ({
+    notebookId,
+    newStages,
+    mode,
+    newDocUrl
+  }: {
+    notebookId: string;
+    newStages: NotebookStage[];
+    mode: 'replace' | 'append';
+    newText?: string;
+    newDocUrl?: string;
+  }) => {
+    const nb = notebooks.find(n => n.id === notebookId);
+    if (!nb) return;
+
+    const now = new Date().toISOString();
+
+    if (mode === 'replace') {
+      // Keep completed tasks! Soft-delete ONLY uncompleted future tasks
+      const uncompletedToPurge = allTasks.filter(t =>
+        !t.isDeleted && !t.completed && (
+          t.milestoneTitle === (nb.milestoneTitle || nb.title) ||
+          nb.stages.some(s => s.title.trim().toLowerCase() === t.title.trim().toLowerCase())
+        )
+      ).map(t => ({ ...t, isDeleted: true, updatedAt: now }));
+
+      if (uncompletedToPurge.length > 0) {
+        onScheduleStage(uncompletedToPurge);
+      }
+
+      // Update notebook stages
+      updateLearningNotebook(notebookId, {
+        stages: newStages,
+        ...(newDocUrl ? { url: newDocUrl } : {})
+      });
+
+      // Schedule new stages to backlog or upcoming week
+      const newTasks: Task[] = newStages.map((stg, idx) => ({
+        id: `nb-recomp-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 4)}`,
+        title: stg.title,
+        description: stg.description,
+        category: 'goals',
+        completed: false,
+        date: 'backlog',
+        durationMinutes: stg.durationMinutes || 20,
+        milestoneTitle: nb.milestoneTitle || nb.title,
+        link: newDocUrl || nb.url,
+        createdAt: now,
+        updatedAt: now
+      }));
+      if (newTasks.length > 0) {
+        onScheduleStage(newTasks);
+      }
+
+      setGlobalNotice({
+        type: 'success',
+        message: `שלבי התוכנית הוחלפו בהצלחה! השלבים שכבר ביצעת נשמרו במלואם.`
+      });
+    } else {
+      // Append mode
+      const updatedStages = [...nb.stages, ...newStages];
+      updateLearningNotebook(notebookId, {
+        stages: updatedStages,
+        ...(newDocUrl ? { url: newDocUrl } : {})
+      });
+
+      const newTasks: Task[] = newStages.map((stg, idx) => ({
+        id: `nb-append-${Date.now()}-${idx}-${Math.random().toString(36).substr(2, 4)}`,
+        title: stg.title,
+        description: stg.description,
+        category: 'goals',
+        completed: false,
+        date: 'backlog',
+        durationMinutes: stg.durationMinutes || 20,
+        milestoneTitle: nb.milestoneTitle || nb.title,
+        link: newDocUrl || nb.url,
+        createdAt: now,
+        updatedAt: now
+      }));
+      if (newTasks.length > 0) {
+        onScheduleStage(newTasks);
+      }
+
+      setGlobalNotice({
+        type: 'success',
+        message: `נוספו ${newStages.length} שלבים חדשים לסוף התוכנית בהצלחה!`
+      });
+    }
+
+    refreshNotebooks();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-5 bg-slate-900/70 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-900/70 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col h-[94vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-5 bg-slate-900/70 backdrop-blur-sm animate-in fade-in duration-200 modal-viewport-lock safe-area-bottom">
+      <div className="bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-900/70 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col h-[94vh] max-w-full">
         {/* Header */}
-        <div className="px-5 py-3.5 bg-gradient-to-r from-purple-700 via-indigo-700 to-purple-900 text-white flex items-center justify-between">
+        <div className="px-5 py-3.5 bg-gradient-to-r from-purple-700 via-indigo-700 to-purple-900 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 shadow-md">
               <Brain className="w-6 h-6 text-white stroke-[2.5]" />
@@ -740,7 +940,7 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
         </div>
 
         {/* Navigation Tabs */}
-        <div className="px-5 py-2.5 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+        <div className="px-5 py-2.5 bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap shrink-0">
           <div className="flex items-center gap-1 p-1 bg-slate-200/70 dark:bg-slate-800 rounded-xl">
             <button
               type="button"
@@ -798,135 +998,322 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
           )}
         </div>
 
+        {/* Global Feedback Banner */}
+        {globalNotice && (
+          <div
+            className={`px-4 py-2 text-xs flex items-center justify-between transition-all shrink-0 ${
+              globalNotice.type === 'success'
+                ? 'bg-emerald-500 text-white'
+                : globalNotice.type === 'error'
+                ? 'bg-rose-500 text-white'
+                : 'bg-purple-600 text-white'
+            }`}
+          >
+            <span>{globalNotice.message}</span>
+            <button
+              type="button"
+              onClick={() => setGlobalNotice(null)}
+              className="text-white/80 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Tab Content Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 max-w-full overflow-x-hidden">
           {/* ======================================================== */}
-          {/* TAB 1: ALL NOTEBOOKS OVERVIEW */}
+          {/* TAB 1: ALL NOTEBOOKS OVERVIEW WITH LIFECYCLE STATUS TABS */}
           {/* ======================================================== */}
-          {activeTab === 'list' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-                    כל מחברות הלמידה שלך ב-GoogleLM
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    באפשרותך לפתוח כל מחברת ב-NotebookLM, לצפות בשלביה, ולשבץ שלבים מכל אחת מהן ישירות להיום
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('add')}
-                  className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-1 cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>הוסף מחברת חדשה</span>
-                </button>
-              </div>
+          {activeTab === 'list' && (() => {
+            const activeNotebooks = notebooks.filter(nb => !nb.status || nb.status === 'active');
+            const draftNotebooks = notebooks.filter(nb => nb.status === 'in_preparation');
+            const archivedNotebooks = notebooks.filter(nb => nb.status === 'archived');
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-                {notebooks.map((nb) => {
-                  const completedCount = nb.stages.filter(s => isStageCompleted(s.title)).length;
-                  const totalCount = nb.stages.length;
-                  const totalMinutes = nb.stages.reduce((sum, s) => sum + (s.durationMinutes || 0), 0);
-                  const isAssertiveDefault = nb.id === 'notebook-assertive-default';
+            const displayedNotebooks =
+              programStatusTab === 'active'
+                ? activeNotebooks
+                : programStatusTab === 'in_preparation'
+                ? draftNotebooks
+                : archivedNotebooks;
 
-                  return (
-                    <div
-                      key={nb.id}
-                      className="p-4 bg-white dark:bg-slate-850 rounded-2xl border border-slate-200/90 dark:border-slate-800 flex flex-col justify-between gap-3 shadow-2xs hover:border-purple-300 dark:hover:border-purple-700 transition-all"
+            return (
+              <div className="space-y-4 max-w-full">
+                {/* Status Switcher Bar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-50 dark:bg-slate-850 rounded-2xl border border-slate-200/90 dark:border-slate-800">
+                  <div className="flex items-center gap-1.5 p-1 bg-slate-200/70 dark:bg-slate-800 rounded-xl overflow-x-auto max-w-full">
+                    <button
+                      type="button"
+                      onClick={() => setProgramStatusTab('active')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                        programStatusTab === 'active'
+                          ? 'bg-white dark:bg-slate-700 text-emerald-700 dark:text-emerald-300 shadow-2xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      }`}
                     >
-                      <div>
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300 flex items-center justify-center shrink-0">
-                              <Brain className="w-5 h-5" />
-                            </div>
-                            <div>
-                              <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                                {nb.title}
-                              </h4>
-                              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                                {nb.milestoneTitle}
-                              </span>
-                            </div>
-                          </div>
+                      <span>תוכניות פעילות</span>
+                      <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300">
+                        {activeNotebooks.length}
+                      </span>
+                    </button>
 
-                          <div className="flex items-center gap-1 shrink-0">
-                            {nb.url && (
-                              <a
-                                href={nb.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-1.5 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/60 rounded-lg transition-colors"
-                                title="פתח מחברת ב-NotebookLM"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
-                            )}
-                            {!isAssertiveDefault && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteNotebook(nb.id, nb.title)}
-                                className="p-1.5 text-slate-300 hover:text-rose-500 rounded-lg transition-colors"
-                                title="הסר מחברת"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
+                    <button
+                      type="button"
+                      onClick={() => setProgramStatusTab('in_preparation')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                        programStatusTab === 'in_preparation'
+                          ? 'bg-white dark:bg-slate-700 text-amber-800 dark:text-amber-300 shadow-2xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      }`}
+                    >
+                      <span>חממת יעדים בהכנה 💡</span>
+                      <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-200">
+                        {draftNotebooks.length}
+                      </span>
+                    </button>
 
-                        {nb.description && (
-                          <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 line-clamp-2">
-                            {nb.description}
-                          </p>
-                        )}
+                    <button
+                      type="button"
+                      onClick={() => setProgramStatusTab('archived')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
+                        programStatusTab === 'archived'
+                          ? 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 shadow-2xs'
+                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                      }`}
+                    >
+                      <Archive className="w-3.5 h-3.5" />
+                      <span>ארכיון</span>
+                      <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                        {archivedNotebooks.length}
+                      </span>
+                    </button>
+                  </div>
 
-                        <div className="flex items-center gap-3 mt-3 text-xs text-slate-500">
-                          <span>{totalCount} שלבי תרגול</span>
-                          <span>•</span>
-                          <span>⏱️ {totalMinutes} דק׳ מוערכות</span>
-                          {completedCount > 0 && (
-                            <>
-                              <span>•</span>
-                              <span className="text-emerald-600 font-bold">
-                                {completedCount} הושלמו ✓
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('add')}
+                    className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-1 cursor-pointer shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>הוסף מחברת חדשה</span>
+                  </button>
+                </div>
 
-                      {/* Actions */}
-                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                {/* Notebook Cards Grid */}
+                {displayedNotebooks.length === 0 ? (
+                  <div className="text-center py-12 px-4 bg-white dark:bg-slate-850 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-slate-400 text-xs space-y-2">
+                    {programStatusTab === 'in_preparation' ? (
+                      <>
+                        <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm">
+                          חממת היעדים בהכנה ריקה כרגע.
+                        </p>
+                        <p>
+                          כאן נשמרים רעיונות ותוכניות שטרם שובצו לסדר היום. צור/י יעד חדש ובחר/י "חממת יעדים (טיוטה בהכנה)".
+                        </p>
                         <button
                           type="button"
                           onClick={() => {
-                            setSelectedNotebookId(nb.id);
-                            setActiveTab('view_edit');
+                            setNewProgramStatus('in_preparation');
+                            setActiveTab('add');
                           }}
-                          className="px-3 py-1.5 text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-100 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
+                          className="mt-2 px-3.5 py-1.5 rounded-xl bg-amber-600 text-white font-bold text-xs"
                         >
-                          <Layers className="w-3.5 h-3.5" />
-                          <span>צפה בשלבים ושבץ להיום</span>
+                          הוסף יעד לחממה +
                         </button>
-
-                        <a
-                          href={nb.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-slate-500 hover:text-purple-600 font-semibold flex items-center gap-1"
+                      </>
+                    ) : programStatusTab === 'archived' ? (
+                      <>
+                        <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm">
+                          אין תוכניות בארכיון.
+                        </p>
+                        <p>תוכניות שהוקפאו או הסתיימו ניתנות להעברה לארכיון מתוך כרטיסיית התוכנית.</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-semibold text-slate-700 dark:text-slate-200 text-sm">
+                          אין תוכניות פעילות כרגע.
+                        </p>
+                        <p>הוסף/י תוכנית חדשה או הפעל/י יעד מתוך חממת היעדים בהכנה.</p>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('add')}
+                          className="mt-2 px-3.5 py-1.5 rounded-xl bg-purple-600 text-white font-bold text-xs"
                         >
-                          <span>ב-NotebookLM ↗</span>
-                        </a>
-                      </div>
-                    </div>
-                  );
-                })}
+                          הוסף תוכנית חדשה +
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 max-w-full">
+                    {displayedNotebooks.map((nb) => {
+                      const completedCount = nb.stages.filter(s => isStageCompleted(s.title)).length;
+                      const totalCount = nb.stages.length;
+                      const totalMinutes = nb.stages.reduce((sum, s) => sum + (s.durationMinutes || 0), 0);
+                      const isDraft = nb.status === 'in_preparation';
+                      const isArchived = nb.status === 'archived';
+
+                      return (
+                        <div
+                          key={nb.id}
+                          className={`p-4 bg-white dark:bg-slate-850 rounded-2xl border flex flex-col justify-between gap-3 shadow-2xs transition-all max-w-full overflow-hidden ${
+                            isDraft
+                              ? 'border-amber-300 dark:border-amber-700/80 hover:border-amber-400'
+                              : isArchived
+                              ? 'border-slate-300 dark:border-slate-700 opacity-80'
+                              : 'border-slate-200/90 dark:border-slate-800 hover:border-purple-300 dark:hover:border-purple-700'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-start justify-between gap-2 max-w-full">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div
+                                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                    isDraft
+                                      ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-700 dark:text-amber-300'
+                                      : isArchived
+                                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                                      : 'bg-purple-100 dark:bg-purple-950/70 text-purple-700 dark:text-purple-300'
+                                  }`}
+                                >
+                                  <Brain className="w-5 h-5" />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                                      {nb.title}
+                                    </h4>
+                                    {isDraft && (
+                                      <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                                        טיוטה בהכנה 💡
+                                      </span>
+                                    )}
+                                    {isArchived && (
+                                      <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                                        בארכיון 📦
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium truncate block">
+                                    {nb.milestoneTitle}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1 shrink-0">
+                                {nb.url && (
+                                  <a
+                                    href={nb.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1.5 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/60 rounded-lg transition-colors"
+                                    title="פתח מחברת ב-NotebookLM"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteRequest(nb)}
+                                  className="p-1.5 text-slate-300 hover:text-rose-500 rounded-lg transition-colors cursor-pointer"
+                                  title="מחק תוכנית (אפשרויות מחיקה מלאה)"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {nb.description && (
+                              <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 line-clamp-2 break-words">
+                                {nb.description}
+                              </p>
+                            )}
+
+                            <div className="flex items-center flex-wrap gap-2 sm:gap-3 mt-3 text-xs text-slate-500">
+                              <span>{totalCount} שלבי תרגול</span>
+                              <span>•</span>
+                              <span>⏱️ {totalMinutes} דק׳</span>
+                              {completedCount > 0 && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-emerald-600 font-bold">
+                                    {completedCount} הושלמו ✓
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Actions Bar */}
+                          <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2">
+                            {/* Prominent Action on Drafts: Activate Program */}
+                            {isDraft ? (
+                              <button
+                                type="button"
+                                onClick={() => handleActivateDraft(nb)}
+                                className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <Rocket className="w-3.5 h-3.5" />
+                                <span>הפעל יעד כעת 🚀</span>
+                              </button>
+                            ) : isArchived ? (
+                              <button
+                                type="button"
+                                onClick={() => handleUnarchiveNotebook(nb.id)}
+                                className="px-3 py-1.5 text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-100 rounded-xl transition-colors flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <RefreshCw className="w-3.5 h-3.5" />
+                                <span>החזר לפעילות 🔄</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedNotebookId(nb.id);
+                                  setActiveTab('view_edit');
+                                }}
+                                className="px-3 py-1.5 text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-100 rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
+                              >
+                                <Layers className="w-3.5 h-3.5" />
+                                <span>צפה בשלבים ושבץ להיום</span>
+                              </button>
+                            )}
+
+                            <div className="flex items-center gap-1.5">
+                              {/* Re-decompose Button on Active & Draft Programs */}
+                              {!isArchived && (
+                                <button
+                                  type="button"
+                                  onClick={() => setReDecomposeNotebook(nb)}
+                                  className="px-2.5 py-1 text-xs font-semibold text-purple-700 dark:text-purple-300 bg-purple-50/80 dark:bg-purple-950/40 hover:bg-purple-100 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                                  title="עדכן שלבים ממסמך Google Docs או NotebookLM"
+                                >
+                                  <Wand2 className="w-3 h-3" />
+                                  <span className="hidden sm:inline">עדכן שלבים ממסמך</span>
+                                </button>
+                              )}
+
+                              {/* Archive Button on Active */}
+                              {!isDraft && !isArchived && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleArchiveNotebook(nb.id)}
+                                  className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg"
+                                  title="העבר לארכיון"
+                                >
+                                  <Archive className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* ======================================================== */}
           {/* TAB 2: VIEW & EDIT STAGES OF SELECTED NOTEBOOK */}
@@ -1688,6 +2075,45 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                       className="w-full px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/30"
                     />
                   </div>
+
+                  <div className="pt-2 border-t border-purple-200/60 dark:border-purple-800/50">
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                      סטטוס יעד ראשוני:
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewProgramStatus('active')}
+                        className={`p-2.5 rounded-xl border text-right transition-all flex items-center gap-2 ${
+                          newProgramStatus === 'active'
+                            ? 'bg-purple-50 dark:bg-purple-950/60 border-purple-400 text-purple-950 dark:text-purple-200 font-bold ring-1 ring-purple-500/30'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        <span className="text-sm">🚀</span>
+                        <div>
+                          <div className="text-xs font-bold">תוכנית פעילה (Active)</div>
+                          <div className="text-[10px] text-slate-400">משבץ שלבים לשבוע הקרוב</div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setNewProgramStatus('in_preparation')}
+                        className={`p-2.5 rounded-xl border text-right transition-all flex items-center gap-2 ${
+                          newProgramStatus === 'in_preparation'
+                            ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-400 text-amber-950 dark:text-amber-200 font-bold ring-1 ring-amber-500/30'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        <span className="text-sm">💡</span>
+                        <div>
+                          <div className="text-xs font-bold">חממת יעדים (טיוטה בהכנה)</div>
+                          <div className="text-[10px] text-slate-400">שמור לתכנון עתידי ללא עומס</div>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -2101,6 +2527,106 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* ReDecompose Plan Modal */}
+      {reDecomposeNotebook && (
+        <ReDecomposeModal
+          isOpen={Boolean(reDecomposeNotebook)}
+          notebook={reDecomposeNotebook}
+          onClose={() => setReDecomposeNotebook(null)}
+          onConfirm={handleApplyRecomposition}
+        />
+      )}
+
+      {/* Clean Purge / Delete Confirmation Dialog */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md shadow-2xl p-5 text-right space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-100 dark:bg-rose-950/70 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  מחיקת תוכנית יעד
+                </h3>
+                <p className="text-xs text-slate-500 truncate max-w-[260px]">
+                  {deleteTarget.title}
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <label className="font-bold text-slate-700 dark:text-slate-300 block">
+                בחר/י את אופן המחיקה:
+              </label>
+
+              {/* Option 1: Clean Purge */}
+              <button
+                type="button"
+                onClick={() => setCleanPurgeOption(true)}
+                className={`w-full p-3 rounded-2xl border text-right transition-all flex items-start gap-2.5 ${
+                  cleanPurgeOption
+                    ? 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 dark:border-rose-700 text-rose-950 dark:text-rose-200 ring-1 ring-rose-500/30'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <div className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${cleanPurgeOption ? 'border-rose-600 bg-rose-600 text-white' : 'border-slate-400'}`}>
+                  {cleanPurgeOption && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                </div>
+                <div>
+                  <div className="font-bold text-rose-800 dark:text-rose-300">
+                    מחיקה נקייה כוללת (Clean Purge) - מומלץ
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    מוחק את התוכנית וגם מסיר את כל המשימות המשויכות אליה מסדר היום, מלוח השבוע ומבנק היעדים.
+                  </div>
+                </div>
+              </button>
+
+              {/* Option 2: Program Only */}
+              <button
+                type="button"
+                onClick={() => setCleanPurgeOption(false)}
+                className={`w-full p-3 rounded-2xl border text-right transition-all flex items-start gap-2.5 ${
+                  !cleanPurgeOption
+                    ? 'bg-purple-50 dark:bg-purple-950/50 border-purple-300 dark:border-purple-700 text-purple-950 dark:text-purple-200 ring-1 ring-purple-500/30'
+                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <div className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${!cleanPurgeOption ? 'border-purple-600 bg-purple-600 text-white' : 'border-slate-400'}`}>
+                  {!cleanPurgeOption && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                </div>
+                <div>
+                  <div className="font-bold">
+                    מחיקת מסגרת התוכנית בלבד
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    מסיר את המחברת אך משאיר את המשימות שכבר שובצו בלוח כמשימות רגילות.
+                  </div>
+                </div>
+              </button>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 transition-colors"
+              >
+                ביטול
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteConfirm}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:scale-95 shadow-md shadow-rose-600/20 transition-all"
+              >
+                כן, מחק תוכנית
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
