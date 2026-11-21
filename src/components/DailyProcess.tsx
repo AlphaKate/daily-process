@@ -4,7 +4,7 @@ import { TaskItem } from './TaskItem';
 import { GoalsTimelineModal } from './GoalsTimelineModal';
 import { CurriculumImportModal } from './CurriculumImportModal';
 import { NotebookManagerModal } from './NotebookManagerModal';
-import { getStoredTasks, saveStoredTasks, getTodayDateString } from '../services/storage';
+import { getStoredTasks, saveStoredTasks, getTodayDateString, formatDateDisplayHebrew } from '../services/storage';
 import {
   getStoredNotebooks,
   deleteLearningNotebook,
@@ -21,7 +21,7 @@ import {
   SUPER_LIST_INVITE_URL
 } from '../services/superListStorage';
 import { getStoredToken, GOOGLE_DRIVE_FOLDER_ID } from '../services/googleAuth';
-import { isBirthdayTaskCheck } from '../services/googleContacts';
+import { isBirthdayTaskCheck, extractBirthdayPersonName } from '../services/googleContacts';
 import {
   ChevronDown,
   ChevronUp,
@@ -353,6 +353,21 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
   );
   const birthdaysCount = birthdayTasksForDay.length;
 
+  // Upcoming Birthdays in next 21 days (across all tasks)
+  const upcomingBirthdays = React.useMemo(() => {
+    const [cy, cm, cd] = currentDate.split('-').map(Number);
+    const curDate = new Date(cy, cm - 1, cd, 0, 0, 0);
+
+    return masterTasks.filter(t => {
+      if (t.isDeleted || !t.date || t.date === 'backlog' || t.date === currentDate) return false;
+      if (!isBirthdayTaskCheck(t)) return false;
+      const [ty, tm, td] = t.date.split('-').map(Number);
+      const targetDate = new Date(ty, tm - 1, td, 0, 0, 0);
+      const diffDays = Math.round((targetDate.getTime() - curDate.getTime()) / (1000 * 60 * 60 * 24));
+      return diffDays > 0 && diffDays <= 21;
+    }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  }, [masterTasks, currentDate]);
+
   // Filter goals for display
   const filteredGoalsForDay =
     milestoneFilter === 'all'
@@ -384,6 +399,34 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
           >
             <Sunrise className="w-3.5 h-3.5" />
             <span>סקור משימות</span>
+          </button>
+        </div>
+      )}
+
+      {/* Upcoming Birthdays Alert Banner (in next 21 days) */}
+      {upcomingBirthdays.length > 0 && (
+        <div className="p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-pink-500/15 via-rose-500/10 to-purple-500/10 dark:from-pink-950/40 dark:via-rose-950/30 dark:to-slate-900 border border-pink-300 dark:border-pink-800/80 flex items-center justify-between gap-3 shadow-2xs animate-in fade-in">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-xl bg-pink-500/20 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
+              🎂
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs sm:text-sm font-bold text-pink-950 dark:text-pink-100 truncate">
+                {upcomingBirthdays.length === 1
+                  ? `יום הולדת קרוב: ${extractBirthdayPersonName(upcomingBirthdays[0].title, upcomingBirthdays[0].contactName)}`
+                  : `${upcomingBirthdays.length} ימי הולדת בשבועות הקרובים`}
+              </div>
+              <p className="text-[11px] text-pink-700 dark:text-pink-300 truncate">
+                {formatDateDisplayHebrew(upcomingBirthdays[0].date)} — לחצי לצפייה בברכות מוכנות ושליחה בוואטסאפ
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenBirthdaysModal}
+            className="px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 active:scale-95 text-white font-bold text-xs shrink-0 shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <span>פתח ברכות 💌</span>
           </button>
         </div>
       )}

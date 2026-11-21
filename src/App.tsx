@@ -1247,6 +1247,7 @@ export const App: React.FC = () => {
           }
           persistTasks(updated);
         }}
+        onDateChange={setCurrentDate}
         showToast={showToast}
       />
 

@@ -112,10 +112,10 @@ export const isBirthdayTaskCheck = (task: {
   description?: string;
   birthdayGreeting?: string;
 }): boolean => {
-  if (task.id && (task.id.startsWith('gcontact-') || task.id.includes('bday'))) return true;
+  if (task.id && (task.id.startsWith('gcontact-') || task.id.includes('bday') || task.id.includes('birthday'))) return true;
   if (Boolean(task.birthdayGreeting)) return true;
   const text = `${task.title || ''} ${task.description || ''}`;
-  return /יום\s*הולדת|יומהולדת|יום-הולדת|\bbirthday\b|\bbday\b|🎂|🎈/i.test(text);
+  return /(?:יום[\s-]*הולדת(?:ו|ה)?|יומ(?:ה)?ולדת(?:ו|ה)?|חגיגת\s+יום[\s-]*הולדת|\bb-?days?\b|\bbirthdays?\b|🎂|🎈)/i.test(text);
 };
 
 /**
@@ -124,10 +124,11 @@ export const isBirthdayTaskCheck = (task: {
 export const extractBirthdayPersonName = (title: string, contactName?: string): string => {
   if (contactName && contactName.trim()) return contactName.trim();
   let clean = (title || '').replace(/[🎂🎈🎉]/g, '').trim();
-  clean = clean.replace(/^(?:משימה:?\s*)?(?:יום\s*הולדת|יומהולדת|יום-הולדת)\s*(?:של|ל|לכבוד|-)?\s*/i, '');
-  clean = clean.replace(/^birthday\s*(?:of)?\s*/i, '');
-  clean = clean.replace(/\s*-\s*(?:יום\s*הולדת|יומהולדת|יום-הולדת).*$/i, '');
-  clean = clean.replace(/'s\s*birthday.*$/i, '');
+  clean = clean.replace(/^(?:משימה:?\s*)?(?:יום[\s-]*הולדת(?:ו|ה)?|יומ(?:ה)?ולדת(?:ו|ה)?|חגיגת\s+יום[\s-]*הולדת)\s*(?:של|ל|לכבוד|-)?\s*/i, '');
+  clean = clean.replace(/^(?:happy\s+)?(?:b-?day|birthdays?)\s*(?:of|for)?\s*/i, '');
+  clean = clean.replace(/\s*-\s*(?:יום[\s-]*הולדת(?:ו|ה)?|יומ(?:ה)?ולדת(?:ו|ה)?).*$/i, '');
+  clean = clean.replace(/'s\s+(?:b-?day|birthdays?).*$/i, '');
+  clean = clean.replace(/\s+(?:b-?day|birthdays?).*$/i, '');
   clean = clean.replace(/\((?:גיל\s*)?\d+\)/g, '').trim();
   return clean || 'חבר/ה יקר/ה';
 };

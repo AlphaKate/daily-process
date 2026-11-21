@@ -10,7 +10,9 @@ import {
   Sparkles,
   RefreshCw,
   Trash2,
-  LogIn
+  LogIn,
+  RotateCcw,
+  CalendarDays
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Task } from '../types';
@@ -21,7 +23,9 @@ import {
   deleteCustomBirthday,
   generateBirthdayGreetingVariants,
   formatWhatsAppBirthdayLink,
-  getDefaultBirthdayGreeting
+  getDefaultBirthdayGreeting,
+  isBirthdayTaskCheck,
+  extractBirthdayPersonName
 } from '../services/googleContacts';
 import { GoogleUser } from '../services/googleAuth';
 
@@ -35,7 +39,27 @@ interface BirthdaysModalProps {
   onSyncGoogle: () => void;
   onConnectGoogle: () => void;
   onScheduleBirthdayTask: (task: Task) => void;
+  onDateChange?: (date: string) => void;
   showToast: (msg: string, type?: 'success' | 'error' | 'warning') => void;
+}
+
+export interface UnifiedBirthdayItem {
+  id: string;
+  key: string;
+  displayName: string;
+  dateStr: string; // YYYY-MM-DD
+  daysUntil: number; // e.g. 0 for today, 14 for in two weeks, -1 for yesterday
+  displayDateText: string;
+  birthYear?: number;
+  age?: number;
+  phone?: string;
+  source: 'calendar' | 'contacts' | 'manual';
+  sourceLabel: string;
+  greeting: string;
+  greetingVariants: string[];
+  task?: Task;
+  contact?: GoogleContactBirthday;
+  isToday: boolean;
 }
 
 const HEBREW_MONTHS = [
@@ -47,17 +71,20 @@ export const BirthdaysModal: React.FC<BirthdaysModalProps> = ({
   isOpen,
   onClose,
   currentDate,
-  tasks: _tasks,
+  tasks,
   googleUser: _googleUser,
   isGoogleConnected,
   onSyncGoogle,
   onConnectGoogle,
   onScheduleBirthdayTask,
+  onDateChange,
   showToast
 }) => {
   const [activeTab, setActiveTab] = useState<'list' | 'add' | 'generator'>('list');
+  const [filterMode, setFilterMode] = useState<'upcoming' | 'all' | 'today'>('upcoming');
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [greetingIndices, setGreetingIndices] = useState<Record<string, number>>({});
 
   // Add Manual Birthday Form
   const [addName, setAddName] = useState('');
@@ -78,6 +105,143 @@ export const BirthdaysModal: React.FC<BirthdaysModalProps> = ({
     // Read from cache whenever modal opens or trigger changes
     return getCachedContactsBirthdays();
   }, [isOpen, refreshTrigger]);
+
+  const unifiedBirthdays = useMemo(() => {
+    const items: UnifiedBirthdayItem[] = [];
+    const seenKeys = new Set<string>();
+
+    const [curY, curM, curD] = currentDate.split('-').map(Number);
+    const curDateObj = new Date(curY, curM - 1, curD, 0, 0, 0);
+
+    // 1. From active tasks in the app (Google Calendar & synced contacts)
+    const birthdayTasks = (tasks || []).filter(t => !t.isDeleted && isBirthdayTaskCheck(t));
+    for (const t of birthdayTasks) {
+      const personName = extractBirthdayPersonName(t.title, t.contactName);
+      const targetDate = t.date || currentDate;
+      const key = `${personName.trim().toLowerCase()}_${targetDate}`;
+      seenKeys.add(key);
+
+      const [ty, tm, td] = targetDate.split('-').map(Number);
+      const tDateObj = new Date(ty, tm - 1, td, 0, 0, 0);
+      const diffDays = Math.round((tDateObj.getTime() - curDateObj.getTime()) / (1000 * 60 * 60 * 24));
+
+      const variants = generateBirthdayGreetingVariants(personName, t.birthdayAge);
+      const activeIdx = greetingIndices[t.id] ?? 0;
+      const greeting = variants[activeIdx % variants.length] || t.birthdayGreeting || getDefaultBirthdayGreeting(personName, t.birthdayAge);
+
+      const isCalendar = t.id.startsWith('gcal-');
+      const isContact = t.id.startsWith('gcontact-');
+
+      items.push({
+        id: t.id,
+        key: t.id,
+        displayName: personName,
+        dateStr: targetDate,
+        daysUntil: diffDays,
+        displayDateText: `${td} ב${HEBREW_MONTHS[tm - 1]}`,
+        birthYear: t.birthdayAge && !isNaN(t.birthdayAge) ? ty - t.birthdayAge : undefined,
+        age: t.birthdayAge,
+        phone: t.contactPhone,
+        source: isCalendar ? 'calendar' : isContact ? 'contacts' : 'manual',
+        sourceLabel: isCalendar ? 'מיומן Google 📅' : isContact ? 'מ-Google Contacts 👥' : 'משימה ✍️',
+        greeting,
+        greetingVariants: variants,
+        task: t,
+        isToday: diffDays === 0
+      });
+    }
+
+    // 2. From cached Google Contacts / custom birthdays (not already represented by a task)
+    for (const c of cachedContacts) {
+      const currentYear = curDateObj.getFullYear();
+      let occDate = new Date(currentYear, c.birthMonth - 1, c.birthDay, 0, 0, 0);
+      // If it already passed more than 7 days ago, show next year's occurrence
+      if (occDate.getTime() < curDateObj.getTime() - 7 * 86400000) {
+        occDate = new Date(currentYear + 1, c.birthMonth - 1, c.birthDay, 0, 0, 0);
+      }
+      const occYear = occDate.getFullYear();
+      const dateStr = `${occYear}-${String(c.birthMonth).padStart(2, '0')}-${String(c.birthDay).padStart(2, '0')}`;
+      const key = `${c.displayName.trim().toLowerCase()}_${dateStr}`;
+
+      if (seenKeys.has(key)) continue;
+      seenKeys.add(key);
+
+      const diffDays = Math.round((occDate.getTime() - curDateObj.getTime()) / (1000 * 60 * 60 * 24));
+      const age = c.birthYear ? occYear - c.birthYear : undefined;
+      const variants = generateBirthdayGreetingVariants(c.displayName, age);
+      const activeIdx = greetingIndices[c.contactId] ?? 0;
+      const greeting = variants[activeIdx % variants.length] || getDefaultBirthdayGreeting(c.displayName, age);
+      const isCustom = c.resourceName.startsWith('custom/');
+
+      items.push({
+        id: c.contactId,
+        key: `contact-${c.contactId}`,
+        displayName: c.displayName,
+        dateStr,
+        daysUntil: diffDays,
+        displayDateText: `${c.birthDay} ב${HEBREW_MONTHS[c.birthMonth - 1]}`,
+        birthYear: c.birthYear,
+        age,
+        phone: c.phone,
+        source: isCustom ? 'manual' : 'contacts',
+        sourceLabel: isCustom ? 'הוספה ידנית ✍️' : 'מ-Google Contacts 👥',
+        greeting,
+        greetingVariants: variants,
+        contact: c,
+        isToday: diffDays === 0
+      });
+    }
+
+    // Sort: upcoming first (daysUntil >= 0 sorted asc), then past (daysUntil < 0 sorted desc)
+    return items.sort((a, b) => {
+      if (a.daysUntil >= 0 && b.daysUntil >= 0) return a.daysUntil - b.daysUntil;
+      if (a.daysUntil >= 0) return -1;
+      if (b.daysUntil >= 0) return 1;
+      return b.daysUntil - a.daysUntil;
+    });
+  }, [tasks, cachedContacts, currentDate, greetingIndices]);
+
+  const filteredUnifiedBirthdays = useMemo(() => {
+    return unifiedBirthdays.filter(item => {
+      // Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matches = item.displayName.toLowerCase().includes(q) || (item.phone && item.phone.includes(q));
+        if (!matches) return false;
+      }
+      // Tab filter
+      if (filterMode === 'today') {
+        return item.isToday;
+      }
+      if (filterMode === 'upcoming') {
+        return item.daysUntil >= 0 && item.daysUntil <= 45;
+      }
+      return true;
+    });
+  }, [unifiedBirthdays, searchQuery, filterMode]);
+
+  const handleCycleItemGreeting = (item: UnifiedBirthdayItem) => {
+    const variants = item.greetingVariants;
+    if (variants.length <= 1) return;
+    const currentIdx = greetingIndices[item.id] ?? 0;
+    const nextIdx = (currentIdx + 1) % variants.length;
+    setGreetingIndices(prev => ({ ...prev, [item.id]: nextIdx }));
+
+    if (item.task) {
+      const nextGreeting = variants[nextIdx];
+      onScheduleBirthdayTask({ ...item.task, birthdayGreeting: nextGreeting });
+    }
+  };
+
+  const getCountdownLabel = (daysUntil: number, dateText: string) => {
+    if (daysUntil === 0) return 'היום! 🎉';
+    if (daysUntil === 1) return 'מחר 🎈';
+    if (daysUntil === 2) return `בעוד יומיים (${dateText})`;
+    if (daysUntil === 7) return `בעוד שבוע (${dateText})`;
+    if (daysUntil === 14) return `בעוד שבועיים (${dateText}) 📅`;
+    if (daysUntil > 0) return `בעוד ${daysUntil} ימים (${dateText})`;
+    return `לפני ${Math.abs(daysUntil)} ימים (${dateText})`;
+  };
 
   if (!isOpen) return null;
 
@@ -171,25 +335,21 @@ export const BirthdaysModal: React.FC<BirthdaysModalProps> = ({
     setActiveTab('list');
   };
 
-  // Schedule any contact's birthday directly to today's Must Do
-  const handleScheduleToToday = (contact: GoogleContactBirthday) => {
-    const currentYear = new Date().getFullYear();
-    const age = contact.birthYear ? currentYear - contact.birthYear : undefined;
-    const greeting = getDefaultBirthdayGreeting(contact.displayName, age);
+  // Schedule any unified birthday item directly to today's Must Do
+  const handleScheduleItemToToday = (item: UnifiedBirthdayItem) => {
     const now = new Date().toISOString();
-
     const task: Task = {
-      id: `gcontact-bday-${contact.contactId}-${currentYear}`,
-      title: `🎂 יום הולדת ל${contact.displayName}${age ? ` (${age})` : ''}`,
-      description: `יום הולדת מתוך אנשי קשר 🎉\n${contact.phone ? `טלפון: ${contact.phone}\n` : ''}💌 הצעת ברכה:\n"${greeting}"`,
+      id: item.task ? `today-${item.task.id}-${Date.now()}` : `gcontact-bday-${item.id}-${new Date().getFullYear()}`,
+      title: item.task?.title.startsWith('🎂') ? item.task.title : `🎂 יום הולדת ל${item.displayName}${item.age ? ` (${item.age})` : ''}`,
+      description: item.task?.description || `יום הולדת 🎉\n${item.phone ? `טלפון: ${item.phone}\n` : ''}💌 הצעת ברכה:\n"${item.greeting}"`,
       category: 'must_do',
       completed: false,
       date: currentDate,
       durationMinutes: 10,
-      contactName: contact.displayName,
-      contactPhone: contact.phone,
-      birthdayGreeting: greeting,
-      birthdayAge: age,
+      contactName: item.displayName,
+      contactPhone: item.phone,
+      birthdayGreeting: item.greeting,
+      birthdayAge: item.age,
       createdAt: now,
       updatedAt: now
     };
@@ -198,14 +358,8 @@ export const BirthdaysModal: React.FC<BirthdaysModalProps> = ({
     try {
       confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
     } catch {}
-    showToast(`יום ההולדת של ${contact.displayName} שובץ להיום בסדר היום! 🎂`, 'success');
+    showToast(`יום ההולדת של ${item.displayName} שובץ להיום בסדר היום! 🎂`, 'success');
   };
-
-  // Filter contacts by search
-  const filteredContacts = cachedContacts.filter(c =>
-    c.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (c.phone && c.phone.includes(searchQuery))
-  );
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
@@ -326,6 +480,44 @@ export const BirthdaysModal: React.FC<BirthdaysModalProps> = ({
           {/* TAB 1: LIST OF BIRTHDAYS */}
           {activeTab === 'list' && (
             <div className="space-y-3">
+              {/* Filter Pills & Search */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('upcoming')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
+                    filterMode === 'upcoming'
+                      ? 'bg-pink-600 text-white shadow-2xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>קרובים (חודש קדימה)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('today')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
+                    filterMode === 'today'
+                      ? 'bg-pink-600 text-white shadow-2xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>היום 🎂</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode('all')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer shrink-0 ${
+                    filterMode === 'all'
+                      ? 'bg-pink-600 text-white shadow-2xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>הכל ({unifiedBirthdays.length})</span>
+                </button>
+              </div>
+
               {/* Search Bar */}
               <div className="relative">
                 <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -338,86 +530,119 @@ export const BirthdaysModal: React.FC<BirthdaysModalProps> = ({
                 />
               </div>
 
-              {filteredContacts.length === 0 ? (
+              {filteredUnifiedBirthdays.length === 0 ? (
                 <div className="text-center py-10 px-4 bg-slate-50 dark:bg-slate-850 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 space-y-3">
                   <div className="w-12 h-12 rounded-2xl bg-pink-100 dark:bg-pink-950/60 text-pink-600 flex items-center justify-center text-2xl mx-auto">
                     🎂
                   </div>
                   <div>
                     <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                      {searchQuery ? 'לא נמצאו אנשי קשר התואמים לחיפוש' : 'אין עדיין ימי הולדת שמורים במאגר'}
+                      {searchQuery ? 'לא נמצאו ימי הולדת התואמים לחיפוש' : 'אין ימי הולדת להצגה בקטגוריה זו'}
                     </h4>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
-                      ניתן לסנכרן אוטומטית מ-Google Contacts, או להוסיף יום הולדת ידנית בלשונית "הוספת יום הולדת חדש".
+                      ניתן לסנכרן אוטומטית מ-Google Calendar & Contacts, או להוסיף יום הולדת ידנית בלשונית "הוספת יום הולדת חדש".
                     </p>
                   </div>
                   <div className="pt-2 flex items-center justify-center gap-2">
                     <button
                       type="button"
                       onClick={handleAddSampleBirthday}
-                      className="px-3.5 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs transition-all shadow-xs"
+                      className="px-3.5 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs transition-all shadow-xs cursor-pointer"
                     >
                       הוסף יום הולדת לדוגמה להיום 🚀
                     </button>
                     <button
                       type="button"
                       onClick={() => setActiveTab('add')}
-                      className="px-3.5 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs transition-all"
+                      className="px-3.5 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 text-slate-800 dark:text-slate-200 font-bold text-xs transition-all cursor-pointer"
                     >
                       הוסף ידנית ➕
                     </button>
                   </div>
                 </div>
               ) : (
-                <div className="space-y-2.5">
-                  {filteredContacts.map(contact => {
-                    const currentYear = new Date().getFullYear();
-                    const age = contact.birthYear ? currentYear - contact.birthYear : undefined;
-                    const greeting = getDefaultBirthdayGreeting(contact.displayName, age);
-                    const isCustom = contact.resourceName.startsWith('custom/');
-                    const waLink = formatWhatsAppBirthdayLink(contact.phone, greeting);
+                <div className="space-y-3">
+                  {filteredUnifiedBirthdays.map(item => {
+                    const waLink = formatWhatsAppBirthdayLink(item.phone, item.greeting);
+                    const isCustom = item.source === 'manual';
 
                     return (
                       <div
-                        key={contact.contactId}
-                        className="p-3.5 rounded-2xl bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 shadow-2xs hover:shadow-xs transition-all space-y-2.5"
+                        key={item.key}
+                        className={`p-3.5 rounded-2xl bg-white dark:bg-slate-800/90 border shadow-2xs hover:shadow-xs transition-all space-y-2.5 ${
+                          item.isToday
+                            ? 'border-pink-500 ring-2 ring-pink-500/20 bg-pink-50/15'
+                            : item.daysUntil <= 14 && item.daysUntil > 0
+                            ? 'border-purple-300 dark:border-purple-800/80 bg-purple-50/10'
+                            : 'border-slate-200 dark:border-slate-700'
+                        }`}
                       >
                         <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-9 h-9 rounded-xl bg-pink-100 dark:bg-pink-950 text-pink-700 flex items-center justify-center text-lg font-bold shrink-0">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-10 h-10 rounded-2xl bg-pink-100 dark:bg-pink-950 text-pink-700 dark:text-pink-300 flex items-center justify-center text-xl font-bold shrink-0 shadow-2xs">
                               🎂
                             </div>
-                            <div>
-                              <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                                <span>{contact.displayName}</span>
-                                {age && (
-                                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200">
-                                    גיל {age}
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                                  {item.displayName}
+                                </h4>
+                                {item.age ? (
+                                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
+                                    גיל {item.age}
                                   </span>
-                                )}
-                              </h4>
-                              <p className="text-xs text-slate-500 dark:text-slate-400">
-                                📅 {contact.birthDay} ב{HEBREW_MONTHS[contact.birthMonth - 1]}
-                                {contact.birthYear ? ` (${contact.birthYear})` : ''}
-                                {contact.phone ? ` • 📞 ${contact.phone}` : ''}
+                                ) : null}
+                                <span className={`text-[10px] font-extrabold px-2 py-0.2 rounded-full shadow-2xs ${
+                                  item.isToday
+                                    ? 'bg-emerald-600 text-white animate-pulse'
+                                    : item.daysUntil <= 14 && item.daysUntil > 0
+                                    ? 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-700'
+                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                                }`}>
+                                  {getCountdownLabel(item.daysUntil, item.displayDateText)}
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5 flex-wrap mt-0.5">
+                                <span>📅 {item.displayDateText}</span>
+                                {item.birthYear ? <span>({item.birthYear})</span> : null}
+                                <span className="text-[10px] text-slate-400 dark:text-slate-500">• {item.sourceLabel}</span>
+                                {item.phone ? <span>• 📞 {item.phone}</span> : null}
                               </p>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleScheduleToToday(contact)}
-                              className="px-2.5 py-1 rounded-xl bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
-                              title="שבץ משימת יום הולדת זו להיום"
-                            >
-                              <span>שבץ להיום 🚀</span>
-                            </button>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {onDateChange && !item.isToday && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onDateChange(item.dateStr);
+                                  onClose();
+                                }}
+                                className="px-2.5 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer"
+                                title="עבור לתאריך זה בסדר היום"
+                              >
+                                <CalendarDays className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">עבור ליום זה</span>
+                              </button>
+                            )}
+
+                            {!item.isToday && (
+                              <button
+                                type="button"
+                                onClick={() => handleScheduleItemToToday(item)}
+                                className="px-2.5 py-1 rounded-xl bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs flex items-center gap-1 shadow-2xs transition-all cursor-pointer"
+                                title="שבץ משימת יום הולדת זו להיום"
+                              >
+                                <span>שבץ להיום 🚀</span>
+                              </button>
+                            )}
+
                             {isCustom && (
                               <button
                                 type="button"
                                 onClick={() => {
-                                  deleteCustomBirthday(contact.contactId);
+                                  deleteCustomBirthday(item.id);
                                   setRefreshTrigger(prev => prev + 1);
                                   showToast('יום ההולדת נמחק', 'success');
                                 }}
@@ -430,30 +655,46 @@ export const BirthdaysModal: React.FC<BirthdaysModalProps> = ({
                           </div>
                         </div>
 
-                        {/* Greeting Card Preview */}
-                        <div className="p-2.5 rounded-xl bg-pink-50/70 dark:bg-pink-950/30 border border-pink-100 dark:border-pink-900/40 text-xs text-slate-800 dark:text-slate-200 leading-relaxed space-y-2">
-                          <p className="font-medium italic">"{greeting}"</p>
-                          <div className="flex items-center gap-2 pt-1 border-t border-pink-100 dark:border-pink-900/30 flex-wrap">
-                            <button
-                              type="button"
-                              onClick={() => handleCopy(greeting, contact.contactId)}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                                copiedId === contact.contactId
-                                  ? 'bg-emerald-600 text-white'
-                                  : 'bg-white dark:bg-slate-800 hover:bg-pink-100 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800'
-                              }`}
-                            >
-                              {copiedId === contact.contactId ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                              <span>{copiedId === contact.contactId ? 'הועתק! ✓' : 'העתק ברכה 📋'}</span>
-                            </button>
+                        {/* Proposed Greeting Card with In-Place Cycle */}
+                        <div className="p-3 rounded-2xl bg-gradient-to-br from-pink-50/80 to-purple-50/40 dark:from-pink-950/30 dark:to-purple-950/20 border border-pink-100 dark:border-pink-900/40 text-xs text-slate-800 dark:text-slate-200 leading-relaxed space-y-2.5">
+                          <p className="font-medium italic leading-relaxed text-slate-900 dark:text-slate-100">
+                            "{item.greeting}"
+                          </p>
+                          
+                          <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-pink-100 dark:border-pink-900/30 flex-wrap">
+                            <div className="flex items-center gap-1.5">
+                              {item.greetingVariants.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleCycleItemGreeting(item)}
+                                  className="px-2.5 py-1 rounded-lg text-xs font-bold bg-white dark:bg-slate-800 hover:bg-purple-50 dark:hover:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center gap-1 transition-all cursor-pointer"
+                                  title="החלף לנוסח ברכה אחר"
+                                >
+                                  <RotateCcw className="w-3 h-3 text-purple-600" />
+                                  <span>ניסוח נוסף 🔄</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleCopy(item.greeting, item.key)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
+                                  copiedId === item.key
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-white dark:bg-slate-800 hover:bg-pink-100 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800'
+                                }`}
+                              >
+                                {copiedId === item.key ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                <span>{copiedId === item.key ? 'הועתק! ✓' : 'העתק ברכה 📋'}</span>
+                              </button>
+                            </div>
 
                             <a
                               href={waLink}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                              className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
                             >
-                              <MessageCircle className="w-3 h-3" />
+                              <MessageCircle className="w-3.5 h-3.5" />
                               <span>שלח בוואטסאפ 💬</span>
                             </a>
                           </div>

@@ -194,7 +194,7 @@ export const getEventLocalDateString = (event: CalendarEvent): string => {
 export const fetchCalendarEventsWindow = async (
   accessToken: string,
   daysBack: number = 7,
-  daysForward: number = 30
+  daysForward: number = 60
 ): Promise<{ events: CalendarEvent[]; windowStart: string; windowEnd: string }> => {
   const now = new Date();
   const startWindow = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysBack, 0, 0, 0, 0);
@@ -222,28 +222,83 @@ export const fetchCalendarEventsWindow = async (
 
   const data = await response.json();
   const allEvents: CalendarEvent[] = [...(data.items || [])];
+  const seenEventIds = new Set<string>(allEvents.map(e => e.id));
 
-  // Also query Google Contacts Birthdays calendar in Google Calendar (addressbook#contacts@group.v.calendar.google.com)
+  // Query Google Calendar list to find ALL birthday & secondary calendars
   try {
-    const bdayCalendarId = 'addressbook#contacts@group.v.calendar.google.com';
-    const bdayUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
-      bdayCalendarId
-    )}/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(
-      timeMax
-    )}&singleEvents=true&maxResults=250`;
-
-    const bdayRes = await fetch(bdayUrl, {
+    const listRes = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
       headers: { Authorization: `Bearer ${accessToken}` }
     });
+    if (listRes.ok) {
+      const listData = await listRes.json();
+      const calendars = (listData.items || []).filter((c: any) => {
+        if (c.primary) return false;
+        const idLower = (c.id || '').toLowerCase();
+        const summaryLower = (c.summary || '').toLowerCase();
+        return (
+          idLower.includes('contacts@group.v.calendar.google.com') ||
+          idLower.includes('birthday') ||
+          summaryLower.includes('birthday') ||
+          summaryLower.includes('הולדת') ||
+          summaryLower.includes('יומולדת')
+        );
+      });
 
-    if (bdayRes.ok) {
-      const bdayData = await bdayRes.json();
-      if (bdayData.items && Array.isArray(bdayData.items)) {
-        allEvents.push(...bdayData.items);
+      for (const cal of calendars) {
+        try {
+          const calUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
+            cal.id
+          )}/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(
+            timeMax
+          )}&singleEvents=true&maxResults=250`;
+          const calRes = await fetch(calUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+          if (calRes.ok) {
+            const calData = await calRes.json();
+            if (calData.items && Array.isArray(calData.items)) {
+              for (const ev of calData.items) {
+                if (!seenEventIds.has(ev.id)) {
+                  seenEventIds.add(ev.id);
+                  allEvents.push(ev);
+                }
+              }
+            }
+          }
+        } catch (calErr) {
+          console.warn(`Notice fetching calendar ${cal.id}:`, calErr);
+        }
       }
     }
-  } catch (bdayErr) {
-    console.warn('Google Contacts calendar fetch notice (optional):', bdayErr);
+  } catch (listErr) {
+    console.warn('CalendarList fetch notice (optional):', listErr);
+  }
+
+  // Also query standard Google Contacts Birthdays calendar IDs directly as backup
+  const directBdayCalIds = [
+    'addressbook#contacts@group.v.calendar.google.com',
+    '#contacts@group.v.calendar.google.com'
+  ];
+  for (const bdayId of directBdayCalIds) {
+    try {
+      const bdayUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
+        bdayId
+      )}/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(
+        timeMax
+      )}&singleEvents=true&maxResults=250`;
+      const bdayRes = await fetch(bdayUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (bdayRes.ok) {
+        const bdayData = await bdayRes.json();
+        if (bdayData.items && Array.isArray(bdayData.items)) {
+          for (const ev of bdayData.items) {
+            if (!seenEventIds.has(ev.id)) {
+              seenEventIds.add(ev.id);
+              allEvents.push(ev);
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore fallback errors
+    }
   }
 
   return {
@@ -368,8 +423,8 @@ export const syncCalendarEventsToTasks = async (
   accessToken: string,
   existingTasks: Task[]
 ): Promise<CalendarSyncResult> => {
-  // Fetch a rolling window from 7 days ago to 30 days ahead
-  const { events, windowStart, windowEnd } = await fetchCalendarEventsWindow(accessToken, 7, 30);
+  // Fetch a rolling window from 7 days ago to 60 days ahead
+  const { events, windowStart, windowEnd } = await fetchCalendarEventsWindow(accessToken, 7, 60);
   const now = new Date().toISOString();
   const newTasks: Task[] = [];
   const updatedTasks: Task[] = [];
@@ -443,7 +498,7 @@ export const syncCalendarEventsToTasks = async (
       const durationChanged = (existing.durationMinutes || undefined) !== (duration || undefined);
       const linkChanged = (existing.link || undefined) !== (taskLink || undefined);
       const descChanged = existing.description !== description;
-      const bdayGreetingChanged = isBirthday && !existing.birthdayGreeting;
+      const bdayGreetingChanged = isBirthday && (!existing.birthdayGreeting || existing.title !== finalTitle);
 
       if (dateChanged || timeChanged || titleChanged || durationChanged || linkChanged || descChanged || bdayGreetingChanged) {
         updatedTasks.push({
