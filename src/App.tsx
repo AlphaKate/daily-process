@@ -977,12 +977,39 @@ export const App: React.FC = () => {
     };
   }, [tasks, notificationPrefs]);
 
+  // Periodic and on-focus check for Google token validity (updates header connection status)
+  useEffect(() => {
+    const checkToken = () => {
+      setIsTokenValid(isGoogleConnected());
+    };
+    window.addEventListener('focus', checkToken);
+    const interval = setInterval(checkToken, 30000);
+    return () => {
+      window.removeEventListener('focus', checkToken);
+      clearInterval(interval);
+    };
+  }, []);
+
   const handleTasksSynced = (newTasks: Task[], updatedTasks: Task[]) => {
     const map = new Map(tasks.map(t => [t.id, t]));
     updatedTasks.forEach(t => map.set(t.id, t));
     newTasks.forEach(t => map.set(t.id, t));
     persistTasks(Array.from(map.values()));
   };
+
+  const handleUpdateTaskInPlace = useCallback((updatedTask: Task) => {
+    const updated = tasks.map(t => (t.id === updatedTask.id ? updatedTask : t));
+    persistTasks(updated);
+  }, [tasks, persistTasks]);
+
+  const handleUserTriggeredSync = useCallback(() => {
+    if (!isGoogleConnected()) {
+      showToast('חיבור ה-Google פג תוקף — פותח חידוש חיבור בלחיצה אחת...', 'warning');
+      handleConnectGoogle();
+      return;
+    }
+    syncGoogleServices();
+  }, [handleConnectGoogle, syncGoogleServices]);
 
   // Morning Review Rollover
   const handleConfirmRollover = (selectedTaskIds: string[], completedTaskIds: string[]) => {
@@ -1061,7 +1088,7 @@ export const App: React.FC = () => {
         isGoogleConnected={isTokenValid}
         isSyncing={isSyncing}
         onConnectGoogle={handleConnectGoogle}
-        onSyncGoogle={() => syncGoogleServices()}
+        onSyncGoogle={handleUserTriggeredSync}
         onLogoutGoogle={handleLogoutGoogle}
         onOpenNotificationSettings={() => setIsNotificationSettingsOpen(true)}
         areNotificationsEnabled={notificationPrefs.enabled}
@@ -1112,6 +1139,7 @@ export const App: React.FC = () => {
             onDeleteRequest={handleDeleteRequest}
             onQuickAddTask={handleOpenAddTask}
             onRescheduleTask={handleRescheduleTask}
+            onUpdateTask={handleUpdateTaskInPlace}
             onTasksSynced={handleTasksSynced}
             overdueTasksCount={overdueTasks.length}
             onOpenMorningReview={() => setIsMorningReviewOpen(true)}

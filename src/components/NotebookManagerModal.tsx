@@ -152,6 +152,7 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
   const [selectedPracticeDays, setSelectedPracticeDays] = useState<number[]>([0, 1, 2, 3, 4]); // Default Sun-Thu
   const [distributionStartDate, setDistributionStartDate] = useState<string>(currentDate);
   const [stageScheduleOverrides, setStageScheduleOverrides] = useState<Record<string, string>>({});
+  const [tab2ScheduleOverrides, setTab2ScheduleOverrides] = useState<Record<string, string>>({});
 
   // Bulk Distribution State for Existing Notebook (Tab 2)
   const [showTab2Distributor, setShowTab2Distributor] = useState(false);
@@ -211,28 +212,40 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
   };
 
   const handleScheduleStage = (notebook: LearningNotebook, stage: NotebookStage, targetDate: string) => {
-    const existing = allTasks.find(
+    // 1. Instant local override for Tab 2 UI responsiveness
+    setTab2ScheduleOverrides(prev => ({ ...prev, [stage.id]: targetDate }));
+
+    // 2. Find ALL matching tasks for this stage
+    const matchingTasks = allTasks.filter(
       t => !t.isDeleted && t.title.trim().toLowerCase() === stage.title.trim().toLowerCase()
     );
 
     const now = new Date().toISOString();
-    const taskToSave: Task = existing
-      ? { ...existing, date: targetDate, updatedAt: now }
-      : {
-          id: `nb-task-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-          title: stage.title,
-          description: stage.description,
-          category: 'goals',
-          completed: false,
-          date: targetDate,
-          durationMinutes: stage.durationMinutes || 20,
-          milestoneTitle: notebook.milestoneTitle || notebook.title,
-          link: notebook.url,
-          createdAt: now,
-          updatedAt: now
-        };
+    let tasksToSave: Task[] = [];
 
-    onScheduleStage(taskToSave);
+    if (matchingTasks.length > 0) {
+      tasksToSave = matchingTasks.map(t => ({
+        ...t,
+        date: targetDate,
+        updatedAt: now
+      }));
+    } else {
+      tasksToSave = [{
+        id: `nb-task-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        title: stage.title,
+        description: stage.description,
+        category: 'goals',
+        completed: false,
+        date: targetDate,
+        durationMinutes: stage.durationMinutes || 20,
+        milestoneTitle: notebook.milestoneTitle || notebook.title,
+        link: notebook.url,
+        createdAt: now,
+        updatedAt: now
+      }];
+    }
+
+    onScheduleStage(tasksToSave.length === 1 ? tasksToSave[0] : tasksToSave);
 
     // Provide instant feedback in modal
     let feedbackText = 'השלב עודכן בהצלחה ✓';
@@ -1765,8 +1778,10 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                     </div>
                   ) : (
                     filteredStages.map((stage, idx) => {
-                      const isScheduledToday = isStageScheduledForDate(stage.title, currentDate);
-                      const scheduledDate = getStageScheduledDate(stage.title);
+                      const overriddenDate = tab2ScheduleOverrides[stage.id];
+                      const scheduledDate = overriddenDate !== undefined ? overriddenDate : getStageScheduledDate(stage.title);
+                      const isScheduledToday = scheduledDate === currentDate;
+                      const isBacklog = scheduledDate === 'backlog';
                       const isDone = isStageCompleted(stage.title);
                       const isEditingThis = editingStageId === stage.id;
                       const isSelected = selectedStageIds.includes(stage.id);
@@ -1860,17 +1875,17 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                                         ⏱️ {stage.durationMinutes} דק׳
                                       </span>
                                     )}
-                                    {scheduledDate === 'backlog' && (
+                                    {isBacklog && (
                                       <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
                                         בבנק היעדים ✓
                                       </span>
                                     )}
-                                    {isScheduledToday && (
+                                    {!isBacklog && isScheduledToday && (
                                       <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-800">
                                         מתוכנן להיום ✓
                                       </span>
                                     )}
-                                    {scheduledDate && scheduledDate !== currentDate && scheduledDate !== 'backlog' && (
+                                    {scheduledDate && scheduledDate !== currentDate && !isBacklog && (
                                       <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-800">
                                         משובץ ל-{formatHebrewDateDisplay(scheduledDate)} ✓
                                       </span>
@@ -1895,38 +1910,38 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                               </div>
 
                               {/* Scheduling & Actions Bottom Bar */}
-                              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-1.5 flex-wrap">
+                              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 flex-wrap">
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <button
                                     type="button"
                                     onClick={() => handleScheduleStage(selectedNotebook, stage, currentDate)}
-                                    className={`px-2.5 py-1 rounded-xl font-bold text-xs shadow-2xs transition-all flex items-center gap-1 cursor-pointer ${
-                                      isScheduledToday
+                                    className={`px-2.5 py-1 rounded-xl font-bold text-xs shadow-2xs transition-all flex items-center gap-1 cursor-pointer shrink-0 ${
+                                      isScheduledToday && !isBacklog
                                         ? 'bg-purple-700 text-white'
                                         : 'bg-purple-600 hover:bg-purple-700 text-white'
                                     }`}
                                     title="הוסף שלב זה לתוכנית של היום"
                                   >
                                     <ArrowDownToLine className="w-3 h-3" />
-                                    <span>{isScheduledToday ? 'שבץ שוב' : 'להיום'}</span>
+                                    <span>{isScheduledToday && !isBacklog ? 'שבץ שוב' : 'להיום'}</span>
                                   </button>
 
                                   <button
                                     type="button"
                                     onClick={() => handleScheduleStage(selectedNotebook, stage, 'backlog')}
-                                    className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                                      scheduledDate === 'backlog'
-                                        ? 'bg-amber-500 text-white shadow-2xs ring-1 ring-amber-400'
+                                    className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer shrink-0 ${
+                                      isBacklog
+                                        ? 'bg-amber-500 text-white shadow-2xs ring-1 ring-amber-400 font-black'
                                         : 'bg-slate-100 dark:bg-slate-800 hover:bg-amber-100 dark:hover:bg-amber-950/60 text-slate-700 dark:text-slate-300 hover:text-amber-800'
                                     }`}
                                     title="העבר שלב זה לבנק היעדים"
                                   >
                                     <Inbox className="w-3 h-3" />
-                                    <span>לבנק</span>
+                                    <span>{isBacklog ? 'בבנק ✓' : 'לבנק'}</span>
                                   </button>
 
                                   <label
-                                    className="relative px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-purple-50 dark:hover:bg-purple-950/60 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                                    className="relative px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-purple-50 dark:hover:bg-purple-950/60 text-slate-700 dark:text-slate-300 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
                                     title="שבץ שלב זה ליום ספציפי"
                                   >
                                     <Calendar className="w-3 h-3 text-purple-600" />
@@ -1943,7 +1958,7 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                                   </label>
                                 </div>
 
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1 shrink-0 ms-auto">
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -1952,7 +1967,7 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                                       setEditStageDesc(stage.description || '');
                                       setEditStageDuration(stage.durationMinutes || 20);
                                     }}
-                                    className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                                    className="p-1.5 text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-950/40 transition-colors cursor-pointer"
                                     title="ערוך שלב"
                                   >
                                     <Edit2 className="w-3.5 h-3.5" />
@@ -1961,7 +1976,7 @@ export const NotebookManagerModal: React.FC<NotebookManagerModalProps> = ({
                                   <button
                                     type="button"
                                     onClick={() => handleDeleteStage(stage.id)}
-                                    className="p-1.5 text-slate-300 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                                    className="p-1.5 text-slate-300 hover:text-rose-500 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
                                     title="מחק שלב"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />

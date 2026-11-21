@@ -56,6 +56,7 @@ interface DailyProcessProps {
   onDeleteRequest: (task: Task) => void;
   onQuickAddTask: (category: TaskCategory) => void;
   onRescheduleTask?: (task: Task, newDate: string) => void;
+  onUpdateTask?: (task: Task) => void;
   onTasksSynced?: (newTasks: Task[], updatedTasks: Task[]) => void;
   overdueTasksCount?: number;
   onOpenMorningReview?: () => void;
@@ -77,6 +78,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
   onDeleteRequest,
   onQuickAddTask,
   onRescheduleTask,
+  onUpdateTask,
   onTasksSynced: _onTasksSynced,
   overdueTasksCount,
   onOpenMorningReview,
@@ -295,6 +297,20 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
     setSuperItems(updated);
   };
 
+  const handleInPlaceTaskUpdate = (updatedTask: Task) => {
+    if (onUpdateTask) {
+      onUpdateTask(updatedTask);
+      return;
+    }
+    const stored = getStoredTasks();
+    const updated = stored.map(t => (t.id === updatedTask.id ? updatedTask : t));
+    saveStoredTasks(updated);
+    if (_onTasksSynced) {
+      _onTasksSynced([], [updatedTask]);
+    }
+    setLocalTasksVersion(v => v + 1);
+  };
+
   const handleImportSuperInline = (item: SuperListItem) => {
     const newTask = importSuperItemToCasual(item, currentDate);
     if (_onTasksSynced) {
@@ -457,6 +473,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                 onToggleComplete={onToggleComplete}
                 onEdit={onEditTask}
                 onDeleteRequest={onDeleteRequest}
+                onUpdateTask={handleInPlaceTaskUpdate}
                 forceExpanded={allTasksExpanded}
               />
             ))}
@@ -626,6 +643,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                     onToggleComplete={onToggleComplete}
                     onEdit={onEditTask}
                     onDeleteRequest={onDeleteRequest}
+                    onUpdateTask={handleInPlaceTaskUpdate}
                     forceExpanded={allTasksExpanded}
                   />
                 ))}
@@ -1122,6 +1140,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                     onToggleComplete={onToggleComplete}
                     onEdit={onEditTask}
                     onDeleteRequest={onDeleteRequest}
+                    onUpdateTask={handleInPlaceTaskUpdate}
                     forceExpanded={allTasksExpanded}
                   />
                 ))}
@@ -1306,6 +1325,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                   onToggleComplete={onToggleComplete}
                   onEdit={onEditTask}
                   onDeleteRequest={onDeleteRequest}
+                  onUpdateTask={handleInPlaceTaskUpdate}
                   forceExpanded={allTasksExpanded}
                 />
               ))}

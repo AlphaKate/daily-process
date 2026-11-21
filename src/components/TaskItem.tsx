@@ -38,6 +38,7 @@ export interface TaskItemProps {
   onEdit: (task: Task) => void;
   onDeleteRequest: (task: Task) => void;
   onReschedule?: (task: Task, targetDate: string) => void;
+  onUpdateTask?: (task: Task) => void;
   currentDate?: string;
   forceExpanded?: boolean;
 }
@@ -121,6 +122,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
   onEdit,
   onDeleteRequest,
   onReschedule,
+  onUpdateTask,
   currentDate,
   forceExpanded
 }) => {
@@ -211,8 +213,8 @@ export const TaskItem: React.FC<TaskItemProps> = ({
     setGreetingIndex(nextIdx);
     const nextGreeting = greetingOptions[nextIdx];
     setCustomGreeting(nextGreeting);
-    if (task.birthdayGreeting !== nextGreeting) {
-      onEdit({ ...task, birthdayGreeting: nextGreeting });
+    if (task.birthdayGreeting !== nextGreeting && onUpdateTask) {
+      onUpdateTask({ ...task, birthdayGreeting: nextGreeting });
     }
   };
 
