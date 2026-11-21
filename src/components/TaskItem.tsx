@@ -16,11 +16,18 @@ import {
   ChevronDown,
   ChevronUp,
   Brain,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Copy,
+  MessageCircle,
+  RotateCw
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { sanitizeUrl } from '../services/securitySanitizer';
 import { QuickRescheduleSheet } from './QuickRescheduleSheet';
+import {
+  generateBirthdayGreetingVariants,
+  formatWhatsAppBirthdayLink
+} from '../services/googleContacts';
 
 export interface TaskItemProps {
   task: Task;
@@ -177,7 +184,63 @@ export const TaskItem: React.FC<TaskItemProps> = ({
     }
   };
 
+  const isBirthdayTask = task.id.startsWith('gcontact-') || Boolean(task.birthdayGreeting);
+  const [greetingIndex, setGreetingIndex] = useState(0);
+  const [customGreeting, setCustomGreeting] = useState<string | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
+
+  const greetingOptions = React.useMemo(() => {
+    if (!isBirthdayTask) return [];
+    const derivedName = task.contactName || task.title.replace(/^🎂\s*יום הולדת ל?/, '').trim();
+    return generateBirthdayGreetingVariants(derivedName, task.birthdayAge);
+  }, [isBirthdayTask, task.contactName, task.title, task.birthdayAge]);
+
+  const activeGreeting = customGreeting || task.birthdayGreeting || greetingOptions[greetingIndex] || '';
+
+  const handleCycleGreeting = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (greetingOptions.length === 0) return;
+    const nextIdx = (greetingIndex + 1) % greetingOptions.length;
+    setGreetingIndex(nextIdx);
+    const nextGreeting = greetingOptions[nextIdx];
+    setCustomGreeting(nextGreeting);
+    if (task.birthdayGreeting !== nextGreeting) {
+      onEdit({ ...task, birthdayGreeting: nextGreeting });
+    }
+  };
+
+  const handleCopyGreeting = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(activeGreeting);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = activeGreeting;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2500);
+    } catch (err) {
+      console.warn('Clipboard write error:', err);
+    }
+  };
+
+  const whatsAppUrl = formatWhatsAppBirthdayLink(task.contactPhone, activeGreeting);
+
   const getCategoryStyles = () => {
+    if (isBirthdayTask) {
+      return {
+        border: 'border-r-4 border-r-pink-500',
+        badgeBg: 'bg-pink-50 text-pink-700 dark:bg-pink-950/60 dark:text-pink-300 border-pink-200 dark:border-pink-800',
+        badgeText: '🎂 יום הולדת',
+        checkboxBorder: 'border-pink-400 dark:border-pink-600',
+        checkboxActive: 'bg-pink-500 text-white'
+      };
+    }
     switch (task.category) {
       case 'must_do':
         return {
@@ -230,7 +293,8 @@ export const TaskItem: React.FC<TaskItemProps> = ({
     task.description ||
     meetingInfo ||
     task.milestoneTitle ||
-    shouldShowDocUrl
+    shouldShowDocUrl ||
+    isBirthdayTask
   );
 
   const effectiveCurrentDate = currentDate || task.date || new Date().toISOString().split('T')[0];
@@ -278,6 +342,18 @@ export const TaskItem: React.FC<TaskItemProps> = ({
               <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-200 dark:border-blue-800 shadow-2xs shrink-0">
                 <Calendar className="w-3.5 h-3.5 text-blue-500" />
                 <span>יומן Google</span>
+              </span>
+            )}
+
+            {/* Google Contacts Birthday badge */}
+            {isBirthdayTask && (
+              <span className="inline-flex items-center gap-1 text-xs font-bold px-2.5 py-0.5 rounded-full bg-pink-50 text-pink-700 dark:bg-pink-950/70 dark:text-pink-300 border border-pink-200 dark:border-pink-800 shadow-2xs shrink-0">
+                <span>Google Contacts</span>
+              </span>
+            )}
+            {isBirthdayTask && task.birthdayAge && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700 shrink-0">
+                <span>חוגג/ת {task.birthdayAge} 🎉</span>
               </span>
             )}
 
@@ -425,6 +501,72 @@ export const TaskItem: React.FC<TaskItemProps> = ({
               {task.title}
             </h3>
           </div>
+
+          {/* Birthday Greeting Card - shown directly when task is not completed, or when expanded */}
+          {isBirthdayTask && (isExpanded || !task.completed) && (
+            <div className="mt-2.5 p-3 rounded-2xl bg-gradient-to-r from-pink-50/90 via-rose-50/70 to-purple-50/80 dark:from-pink-950/40 dark:via-rose-950/30 dark:to-purple-950/40 border border-pink-200/90 dark:border-pink-800/60 shadow-xs space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-pink-800 dark:text-pink-200">
+                  <Sparkles className="w-3.5 h-3.5 text-pink-500" />
+                  <span>הצעת ברכה לשליחה:</span>
+                  {task.birthdayAge && (
+                    <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded-full bg-pink-200 dark:bg-pink-900 text-pink-900 dark:text-pink-100">
+                      גיל {task.birthdayAge} 🎈
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCycleGreeting}
+                  className="text-[11px] font-semibold text-purple-700 dark:text-purple-300 hover:text-purple-900 bg-white/90 dark:bg-slate-800/90 px-2 py-0.5 rounded-lg border border-purple-200 dark:border-purple-800 flex items-center gap-1 hover:shadow-2xs transition-all cursor-pointer"
+                  title="החלף לנוסח ברכה אחר"
+                >
+                  <RotateCw className="w-3 h-3 text-purple-500" />
+                  <span>נוסח אחר ({greetingIndex + 1}/{greetingOptions.length || 5})</span>
+                </button>
+              </div>
+
+              {/* The greeting text */}
+              <div className="bg-white/95 dark:bg-slate-900/90 p-2.5 rounded-xl border border-pink-100 dark:border-pink-900/50 text-xs sm:text-sm text-slate-800 dark:text-slate-100 leading-relaxed font-medium select-text shadow-2xs">
+                "{activeGreeting}"
+              </div>
+
+              {/* Quick Action buttons: Copy & WhatsApp */}
+              <div className="flex items-center gap-2 pt-0.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleCopyGreeting}
+                  className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all active:scale-95 cursor-pointer ${
+                    isCopied
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-pink-600 hover:bg-pink-700 text-white shadow-pink-500/20'
+                  }`}
+                  title="העתק ברכה ללוח"
+                >
+                  {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{isCopied ? 'הועתק בהצלחה! ✓' : 'העתק ברכה 📋'}</span>
+                </button>
+
+                <a
+                  href={whatsAppUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all shadow-emerald-500/20"
+                  title="שלח ברכה ישירות בוואטסאפ"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  <span>שלח בוואטסאפ 💬</span>
+                </a>
+
+                {task.contactPhone && (
+                  <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium bg-white/70 dark:bg-slate-800/70 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                    📞 {task.contactPhone}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Expanded Content Area (Visible only when isExpanded is true) */}
           {isExpanded && (

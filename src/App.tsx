@@ -29,6 +29,7 @@ import {
 import { updateGoogleDocGoalStatus } from './services/googleDocs';
 import { syncCalendarEventsToTasks, createGoogleCalendarEvent } from './services/googleCalendar';
 import { syncSuperListWithDrive } from './services/superListStorage';
+import { syncContactsBirthdaysToTasks } from './services/googleContacts';
 import { checkUrlForMicrosoftToken, getStoredMicrosoftToken, logoutMicrosoft } from './services/microsoftAuth';
 import { getSelectedToDoList, updateMicrosoftTaskStatus } from './services/microsoftToDo';
 import { Header } from './components/Header';
@@ -214,6 +215,30 @@ export const App: React.FC = () => {
         console.warn('Super list Drive sync warning:', superErr);
       }
 
+      // 5. Sync Google Contacts Birthdays -> Must Do
+      let birthdaysCount = 0;
+      let contactsScopeNeeded = false;
+      try {
+        const contactsResult = await syncContactsBirthdaysToTasks(
+          currentDate,
+          tokenObj.access_token,
+          mergedTasks
+        );
+        birthdaysCount = contactsResult.newTasks.length;
+        if (contactsResult.scopeRequired) {
+          contactsScopeNeeded = true;
+        }
+        if (contactsResult.updatedTasks && contactsResult.updatedTasks.length > 0) {
+          const updatedMap = new Map(contactsResult.updatedTasks.map(t => [t.id, t]));
+          mergedTasks = mergedTasks.map(t => updatedMap.get(t.id) || t);
+        }
+        if (contactsResult.newTasks.length > 0) {
+          mergedTasks = [...contactsResult.newTasks, ...mergedTasks];
+        }
+      } catch (contactsErr: any) {
+        console.warn('Google Contacts sync warning:', contactsErr);
+      }
+
       // Save master merged tasks locally and back to Drive
       persistTasks(mergedTasks);
       lastSyncTimeRef.current = Date.now();
@@ -222,11 +247,14 @@ export const App: React.FC = () => {
         const msgParts = [];
         if (calendarCount > 0) msgParts.push(`${calendarCount} פגישות חדשות מיומן Google`);
         if (calendarUpdatesCount > 0) msgParts.push(`${calendarUpdatesCount} פגישות שעודכנו/הוזזו מיומן Google`);
+        if (birthdaysCount > 0) msgParts.push(`🎂 ${birthdaysCount} ימי הולדת מ-Google Contacts`);
         if (driveCount > 0) msgParts.push(`${driveCount} יעדים מ-Drive`);
         if (superCount > 0) msgParts.push(`רשימת סופר (${superCount} פריטים)`);
         
         if (msgParts.length > 0) {
           showToast(`סונכרנו בהצלחה: ${msgParts.join(', ')}`, 'success');
+        } else if (contactsScopeNeeded) {
+          showToast('לסנכרון ימי הולדת מ-Google Contacts, יש להתחבר מחדש לאישור הרשאת אנשי קשר 🎂', 'warning');
         } else {
           showToast('הנתונים סונכרנו בהצלחה מול Google Drive!', 'success');
         }

@@ -37,6 +37,11 @@ export interface Task {
   sourceList?: string; // e.g. 'סופר' or other list name
   rolledOverFrom?: string; // original date if rolled over
   isDeleted?: boolean; // soft-delete for reliable cross-device sync
+  contactId?: string;
+  contactName?: string;
+  contactPhone?: string;
+  birthdayGreeting?: string;
+  birthdayAge?: number;
   createdAt: string;
   updatedAt: string;
 }

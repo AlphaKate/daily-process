@@ -5,7 +5,8 @@ const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/calendar.readonly',
-  'https://www.googleapis.com/auth/documents'
+  'https://www.googleapis.com/auth/documents',
+  'https://www.googleapis.com/auth/contacts.readonly'
 ].join(' ');
 
 const TOKEN_KEY = 'google_oauth_token_v1';

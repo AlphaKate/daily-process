@@ -140,7 +140,7 @@ export const SecurityDisconnectModal: React.FC<SecurityDisconnectModalProps> = (
                   <div className="flex-1">
                     <h4 className="font-bold text-slate-900 dark:text-white text-sm">התנתקות בלבד (Revoke & Disconnect)</h4>
                     <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5 leading-relaxed">
-                      מבטל את הרשאת הגישה הרשמית מול שרתי Google (Revoke Token) ומנתק את הגישה ל-Drive, Docs ו-Calendar. המשימות יישארו שמורות במכשירך לצפייה אופליין.
+                      מבטל את הרשאת הגישה הרשמית מול שרתי Google (Revoke Token) ומנתק את הגישה ל-Drive, Docs, Calendar ו-Google Contacts. המשימות יישארו שמורות במכשירך לצפייה אופליין.
                     </p>
                   </div>
                 </div>

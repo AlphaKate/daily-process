@@ -328,6 +328,12 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
   const calendarTasksForDay = tasks.filter(t => !t.isDeleted && t.id.startsWith('gcal-'));
   const calendarMeetingsCount = calendarTasksForDay.length;
 
+  // Google Contacts Birthdays count for today
+  const birthdayTasksForDay = tasks.filter(
+    t => !t.isDeleted && (t.id.startsWith('gcontact-') || Boolean(t.birthdayGreeting))
+  );
+  const birthdaysCount = birthdayTasksForDay.length;
+
   // Filter goals for display
   const filteredGoalsForDay =
     milestoneFilter === 'all'
@@ -403,6 +409,19 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                       {calendarMeetingsCount === 1
                         ? 'פגישה 1 מסונכרנת'
                         : `${calendarMeetingsCount} פגישות מסונכרנות`}
+                    </span>
+                  </span>
+                )}
+                {birthdaysCount > 0 && (
+                  <span
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-pink-50 text-pink-700 dark:bg-pink-950/70 dark:text-pink-300 border border-pink-200 dark:border-pink-800 shadow-2xs"
+                    title="ימי הולדת שסונכרנו מ-Google Contacts להיום"
+                  >
+                    <span>🎂</span>
+                    <span>
+                      {birthdaysCount === 1
+                        ? 'יום הולדת 1 היום 🎉'
+                        : `${birthdaysCount} ימי הולדת היום 🎉`}
                     </span>
                   </span>
                 )}

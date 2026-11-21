@@ -106,7 +106,12 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       milestoneTitle: milestoneTitle.trim() || undefined,
       link: link.trim() || undefined,
       goalDocumentId: resolvedGoalDocId,
-      addToCalendar
+      addToCalendar,
+      contactId: initialTask?.contactId,
+      contactName: initialTask?.contactName,
+      contactPhone: initialTask?.contactPhone,
+      birthdayGreeting: initialTask?.birthdayGreeting,
+      birthdayAge: initialTask?.birthdayAge
     });
     onClose();
   };
