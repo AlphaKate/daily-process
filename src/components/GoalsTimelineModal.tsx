@@ -18,7 +18,10 @@ import {
   ArrowDownToLine,
   Brain,
   Search,
-  Gauge
+  Gauge,
+  Trash2,
+  Target,
+  AlertTriangle
 } from 'lucide-react';
 import { QuickRescheduleSheet } from './QuickRescheduleSheet';
 
@@ -31,6 +34,7 @@ interface GoalsTimelineModalProps {
   onEditTask: (task: Task) => void;
   onQuickAddGoal: () => void;
   onRescheduleGoal: (task: Task, newDate: string) => void;
+  onDeleteMilestone?: (milestone: string, mode: 'purge' | 'unlink') => void;
 }
 
 const HEBREW_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
@@ -51,6 +55,7 @@ export const GoalsTimelineModal: React.FC<GoalsTimelineModalProps> = ({
   onEditTask,
   onQuickAddGoal,
   onRescheduleGoal,
+  onDeleteMilestone,
 }) => {
   const [activeTab, setActiveTab] = useState<'week' | 'bank' | 'milestones' | 'month'>('week');
   const [filterMilestone, setFilterMilestone] = useState<string>('all');
@@ -63,6 +68,21 @@ export const GoalsTimelineModal: React.FC<GoalsTimelineModalProps> = ({
   const [isBacklogDrawerOpen, setIsBacklogDrawerOpen] = useState<boolean>(true);
   const [collapsedMilestones, setCollapsedMilestones] = useState<Record<string, boolean>>({});
   const [rescheduleSheetTask, setRescheduleSheetTask] = useState<Task | null>(null);
+  const [milestoneToDelete, setMilestoneToDelete] = useState<{
+    name: string;
+    count: number;
+    goals: Task[];
+  } | null>(null);
+  const [deleteMode, setDeleteMode] = useState<'purge' | 'unlink'>('purge');
+
+  const handleConfirmDeleteMilestone = () => {
+    if (!milestoneToDelete) return;
+    const { name } = milestoneToDelete;
+    if (onDeleteMilestone) {
+      onDeleteMilestone(name, deleteMode);
+    }
+    setMilestoneToDelete(null);
+  };
 
   if (!isOpen) return null;
 
@@ -179,7 +199,7 @@ export const GoalsTimelineModal: React.FC<GoalsTimelineModalProps> = ({
   // Group goals by milestone for Milestone view
   const milestoneMap = new Map<string, Task[]>();
   allGoals.forEach(g => {
-    const ms = g.milestoneTitle?.trim() || 'ללא אבן דרך מוגדרת';
+    const ms = g.milestoneTitle?.trim() || 'יעדים כלליים (ללא אבן דרך)';
     const list = milestoneMap.get(ms) || [];
     list.push(g);
     milestoneMap.set(ms, list);
@@ -973,10 +993,24 @@ export const GoalsTimelineModal: React.FC<GoalsTimelineModalProps> = ({
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 shrink-0">
+                          <div className="flex items-center gap-1.5 shrink-0">
                             <button
                               type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMilestoneToDelete({ name: milestone, count: items.length, goals: items });
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl transition-colors cursor-pointer"
+                              title="מחיקת אבן דרך"
+                              aria-label={`מחק את אבן הדרך ${milestone}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => toggleMilestoneCollapse(milestone)}
                               className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                              aria-label={isCollapsed ? 'פתח אבן דרך' : 'כווץ אבן דרך'}
                             >
                               {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
                             </button>
@@ -1119,6 +1153,10 @@ export const GoalsTimelineModal: React.FC<GoalsTimelineModalProps> = ({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {Array.from(milestoneMap.entries()).map(([milestone, goals]) => {
+                  if (filterMilestone !== 'all' && milestone !== filterMilestone) {
+                    return null;
+                  }
+
                   let filteredList = goals;
                   if (statusFilter === 'pending') {
                     filteredList = filteredList.filter((g) => !g.completed);
@@ -1130,32 +1168,51 @@ export const GoalsTimelineModal: React.FC<GoalsTimelineModalProps> = ({
                   const completed = goals.filter((g) => g.completed).length;
                   const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
                   const totalMinutes = goals.reduce((sum, g) => sum + (g.durationMinutes || 0), 0);
+                  const displayTitle = milestone?.trim() || 'יעדים כלליים (ללא אבן דרך)';
 
                   return (
                     <div
                       key={milestone}
-                      className="bg-white dark:bg-slate-850 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3"
+                      className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-200 dark:border-slate-700 shadow-sm space-y-3.5 transition-all hover:border-emerald-300 dark:hover:border-emerald-600"
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950/70 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                            <Milestone className="w-4 h-4" />
+                      {/* Milestone Header */}
+                      <div className="flex items-start justify-between gap-3 border-b border-slate-100 dark:border-slate-750 pb-3">
+                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                          <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
+                            <Target className="w-5 h-5 stroke-[2.2]" />
                           </div>
-                          <div className="min-w-0">
-                            <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate">
-                              {milestone}
+                          <div className="min-w-0 flex-1">
+                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block mb-0.5">
+                              אבן דרך
+                            </span>
+                            <h4
+                              className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white leading-snug break-words"
+                              title={displayTitle}
+                            >
+                              {displayTitle}
                             </h4>
-                            <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-1">
                               {completed} מתוך {total} הושלמו ({percent}%)
                             </span>
                           </div>
                         </div>
 
-                        {totalMinutes > 0 && (
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 shrink-0">
-                            ⏱️ {totalMinutes} דק׳
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {totalMinutes > 0 && (
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 shrink-0">
+                              ⏱️ {totalMinutes} דק׳
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setMilestoneToDelete({ name: milestone, count: total, goals })}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl transition-colors cursor-pointer"
+                            aria-label={`מחק את אבן הדרך ${displayTitle}`}
+                            title="מחיקת אבן דרך"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
 
                       {/* Progress Bar */}
@@ -1167,11 +1224,11 @@ export const GoalsTimelineModal: React.FC<GoalsTimelineModalProps> = ({
                       </div>
 
                       {/* Sub-goals list */}
-                      <div className="space-y-1.5 pt-1 max-h-48 overflow-y-auto">
+                      <div className="space-y-1.5 pt-1 max-h-48 overflow-y-auto pr-0.5">
                         {filteredList.map((g) => (
                           <div
                             key={g.id}
-                            className="flex items-center justify-between text-xs p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/50"
+                            className="flex items-center justify-between text-xs p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/50 hover:bg-slate-100/70 dark:hover:bg-slate-750 transition-colors"
                           >
                             <div className="flex items-center gap-2 min-w-0">
                               <button
@@ -1321,6 +1378,102 @@ export const GoalsTimelineModal: React.FC<GoalsTimelineModalProps> = ({
             setRescheduleSheetTask(null);
           }}
         />
+      )}
+
+      {/* Milestone Delete Confirmation Dialog */}
+      {milestoneToDelete && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-150 modal-viewport-lock">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md shadow-2xl p-5 text-right space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-100 dark:bg-rose-950/70 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">
+                  מחיקת אבן דרך
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                  {milestoneToDelete.name}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-2xl text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
+              אבן דרך זו כוללת <strong>{milestoneToDelete.count} משימות</strong>.
+              כיצד ברצונך לבצע את המחיקה?
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <label
+                onClick={() => setDeleteMode('purge')}
+                className={`p-3 rounded-2xl border flex items-start gap-2.5 cursor-pointer transition-all ${
+                  deleteMode === 'purge'
+                    ? 'border-rose-400 bg-rose-50/70 dark:bg-rose-950/40 text-rose-950 dark:text-rose-200 ring-1 ring-rose-500/20'
+                    : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="milestoneDeleteMode"
+                  checked={deleteMode === 'purge'}
+                  onChange={() => setDeleteMode('purge')}
+                  className="mt-0.5 accent-rose-600"
+                />
+                <div>
+                  <div className="font-bold text-slate-900 dark:text-white">
+                    מחיקה מלאה (מומלץ)
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    מוחק את אבן הדרך ומסיר את כל {milestoneToDelete.count} המשימות מהתהליך היומי, מלוח הזמנים ומבנק היעדים.
+                  </div>
+                </div>
+              </label>
+
+              <label
+                onClick={() => setDeleteMode('unlink')}
+                className={`p-3 rounded-2xl border flex items-start gap-2.5 cursor-pointer transition-all ${
+                  deleteMode === 'unlink'
+                    ? 'border-slate-400 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white ring-1 ring-slate-500/20'
+                    : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-850'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="milestoneDeleteMode"
+                  checked={deleteMode === 'unlink'}
+                  onChange={() => setDeleteMode('unlink')}
+                  className="mt-0.5 accent-slate-600"
+                />
+                <div>
+                  <div className="font-bold text-slate-900 dark:text-white">
+                    הסרת שיוך אבן הדרך בלבד
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    המשימות יישמרו בבנק היעדים כמשימות עצמאיות (ללא שיוך לאבן דרך זו).
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setMilestoneToDelete(null)}
+                className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                ביטול
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteMilestone}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-bold text-xs shadow-md shadow-rose-600/20 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>אישור מחיקה</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

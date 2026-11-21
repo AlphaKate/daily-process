@@ -6,6 +6,11 @@ import { CurriculumImportModal } from './CurriculumImportModal';
 import { NotebookManagerModal } from './NotebookManagerModal';
 import { getStoredTasks, saveStoredTasks, getTodayDateString } from '../services/storage';
 import {
+  getStoredNotebooks,
+  deleteLearningNotebook,
+  updateLearningNotebook
+} from '../services/notebookStorage';
+import {
   SuperListItem,
   getSuperListItems,
   addSuperListItem,
@@ -159,6 +164,54 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
       );
       saveStoredTasks(updated);
       setLocalTasksVersion(v => v + 1);
+    }
+  };
+
+  // Milestone deletion handler (purge all tasks or unlink milestone)
+  const handleDeleteMilestone = (milestoneName: string, mode: 'purge' | 'unlink') => {
+    const now = new Date().toISOString();
+    const stored = getStoredTasks();
+    const isMatching = (t: Task) => {
+      const ms = t.milestoneTitle?.trim() || 'יעדים כלליים (ללא אבן דרך)';
+      return ms === milestoneName || t.milestoneTitle?.trim() === milestoneName;
+    };
+
+    let updatedTasks: Task[] = [];
+    if (mode === 'purge') {
+      updatedTasks = stored
+        .filter(t => !t.isDeleted && isMatching(t))
+        .map(t => ({ ...t, isDeleted: true, updatedAt: now }));
+    } else {
+      updatedTasks = stored
+        .filter(t => !t.isDeleted && isMatching(t))
+        .map(t => ({ ...t, milestoneTitle: undefined, updatedAt: now }));
+    }
+
+    if (updatedTasks.length > 0) {
+      const map = new Map(stored.map(t => [t.id, t]));
+      updatedTasks.forEach(t => map.set(t.id, t));
+      const newStored = Array.from(map.values());
+      saveStoredTasks(newStored);
+      if (_onTasksSynced) {
+        _onTasksSynced([], updatedTasks);
+      } else {
+        setLocalTasksVersion(v => v + 1);
+      }
+    }
+
+    // Also update any matching learning notebooks
+    try {
+      const nbs = getStoredNotebooks();
+      const matchNb = nbs.find(nb => (nb.milestoneTitle || nb.title)?.trim() === milestoneName);
+      if (matchNb) {
+        if (mode === 'purge') {
+          deleteLearningNotebook(matchNb.id);
+        } else {
+          updateLearningNotebook(matchNb.id, { milestoneTitle: 'יעדים כלליים' });
+        }
+      }
+    } catch {
+      // ignore
     }
   };
 
@@ -1251,6 +1304,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
           onQuickAddTask('goals');
         }}
         onRescheduleGoal={handleReschedule}
+        onDeleteMilestone={handleDeleteMilestone}
       />
 
       {/* 6. CURRICULUM / NOTEBOOKLM IMPORTER MODAL */}
