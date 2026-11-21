@@ -1,5 +1,26 @@
 export type TaskCategory = 'must_do' | 'goals' | 'casual';
 
+export type GoalLifecycleStatus = 'active' | 'in_preparation' | 'archived' | 'completed';
+
+export interface NotebookStage {
+  id: string;
+  title: string;
+  description?: string;
+  durationMinutes?: number;
+}
+
+export interface LearningNotebook {
+  id: string;
+  title: string; // e.g. "Daily Assertive Practice Plan"
+  url: string; // e.g. "https://notebooklm.link.google/0Uhj6QVmB40d"
+  milestoneTitle: string; // e.g. "Daily Assertive Practice (GoogleLM)"
+  description?: string;
+  stages: NotebookStage[];
+  status?: GoalLifecycleStatus; // 'active' | 'in_preparation' | 'archived' | 'completed' (default: 'active')
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -7,12 +28,13 @@ export interface Task {
   category: TaskCategory;
   completed: boolean;
   completedAt?: string;
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD or 'backlog'
   time?: string; // HH:mm
   durationMinutes?: number;
   link?: string;
   milestoneTitle?: string;
   goalDocumentId?: string;
+  goalStatus?: GoalLifecycleStatus;
   sourceList?: string; // e.g. 'סופר' or other list name
   rolledOverFrom?: string; // original date if rolled over
   isDeleted?: boolean; // soft-delete for reliable cross-device sync

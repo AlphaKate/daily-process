@@ -1,22 +1,7 @@
 // Storage and management for GoogleLM / NotebookLM learning notebooks and their curriculum stages
+import { GoalLifecycleStatus, NotebookStage, LearningNotebook } from '../types';
 
-export interface NotebookStage {
-  id: string;
-  title: string;
-  description?: string;
-  durationMinutes?: number;
-}
-
-export interface LearningNotebook {
-  id: string;
-  title: string; // e.g. "Daily Assertive Practice Plan"
-  url: string; // e.g. "https://notebooklm.link.google/0Uhj6QVmB40d"
-  milestoneTitle: string; // e.g. "Daily Assertive Practice (GoogleLM)"
-  description?: string;
-  stages: NotebookStage[];
-  createdAt: string;
-  updatedAt: string;
-}
+export type { GoalLifecycleStatus, NotebookStage, LearningNotebook };
 
 const NOTEBOOKS_STORAGE_KEY = 'daily_proc_learning_notebooks_v1';
 
@@ -26,6 +11,7 @@ export const INITIAL_ASSERTIVE_NOTEBOOK: LearningNotebook = {
   url: 'https://notebooklm.link.google/0Uhj6QVmB40d',
   milestoneTitle: 'Daily Assertive Practice (GoogleLM)',
   description: 'תוכנית תרגול יומית לתקשורת אסרטיבית, הצבת גבולות, עמידה בלחצים והטמעה מעשית.',
+  status: 'active',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   stages: [
@@ -77,21 +63,26 @@ export const INITIAL_ASSERTIVE_NOTEBOOK: LearningNotebook = {
 export const getStoredNotebooks = (): LearningNotebook[] => {
   try {
     const raw = localStorage.getItem(NOTEBOOKS_STORAGE_KEY);
-    if (!raw) {
+    if (raw === null) {
+      if (localStorage.getItem('daily_proc_notebooks_initialized_v1') === 'true') {
+        return [];
+      }
+      localStorage.setItem('daily_proc_notebooks_initialized_v1', 'true');
       const initial = [INITIAL_ASSERTIVE_NOTEBOOK];
       saveStoredNotebooks(initial);
       return initial;
     }
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed;
+    if (Array.isArray(parsed)) {
+      return parsed.map(nb => ({
+        ...nb,
+        status: nb.status || 'active'
+      }));
     }
   } catch (e) {
     console.error('Failed to parse learning notebooks', e);
   }
-  const fallback = [INITIAL_ASSERTIVE_NOTEBOOK];
-  saveStoredNotebooks(fallback);
-  return fallback;
+  return [];
 };
 
 export const saveStoredNotebooks = (notebooks: LearningNotebook[]): void => {
@@ -103,6 +94,7 @@ export const addLearningNotebook = (notebook: Omit<LearningNotebook, 'id' | 'cre
   const now = new Date().toISOString();
   const created: LearningNotebook = {
     ...notebook,
+    status: notebook.status || 'active',
     id: `nb-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
     createdAt: now,
     updatedAt: now
