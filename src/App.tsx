@@ -17,6 +17,7 @@ import {
   logoutGoogle,
   getStoredToken,
   getStoredGoogleUser,
+  isGoogleConnected,
   onUserProfileUpdated,
   GoogleUser,
   GOOGLE_DRIVE_FOLDER_ID
@@ -66,6 +67,7 @@ export const App: React.FC = () => {
 
   // Google integration state
   const [googleUser, setGoogleUser] = useState<GoogleUser | null>(getStoredGoogleUser);
+  const [isTokenValid, setIsTokenValid] = useState<boolean>(isGoogleConnected);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
 
@@ -120,10 +122,26 @@ export const App: React.FC = () => {
   const syncGoogleServices = useCallback(async (tokenStr?: string, silent: boolean = false) => {
     const tokenObj = tokenStr ? { access_token: tokenStr } : getStoredToken();
     if (!tokenObj) {
-      if (!silent) showToast('נא להתחבר תחילה לחשבון Google', 'error');
+      setIsTokenValid(false);
+      if (!silent) {
+        showToast('חיבור ה-Google פג תוקף — פותח התחברות לחידוש הסנכרון...', 'warning');
+        triggerGoogleLogin(
+          (freshToken) => {
+            setIsTokenValid(true);
+            setGoogleUser(getStoredGoogleUser() || { email: 'מחובר ל-Google', name: 'משתמש Google' });
+            showToast('החיבור חודש בהצלחה! מסנכרן...', 'success');
+            syncGoogleServices(freshToken.access_token);
+          },
+          (loginErr) => {
+            console.warn('Re-auth cancelled or failed', loginErr);
+            showToast('חידוש החיבור בוטל או נכשל', 'error');
+          }
+        );
+      }
       return;
     }
 
+    setIsTokenValid(true);
     setIsSyncing(true);
     let calendarCount = 0;
     let calendarUpdatesCount = 0;
@@ -261,6 +279,9 @@ export const App: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Overall Google sync error:', err);
+      if (err?.status === 401 || err?.message?.includes('401')) {
+        setIsTokenValid(false);
+      }
       if (!silent) {
         showToast(err.message || 'שגיאה בסנכרון מול Google', 'error');
       }
@@ -450,6 +471,7 @@ export const App: React.FC = () => {
     try {
       triggerGoogleLogin(
         (token) => {
+          setIsTokenValid(true);
           setGoogleUser(getStoredGoogleUser() || { email: 'מחובר ל-Google', name: 'משתמש Google' });
           showToast('התחברת בהצלחה לחשבון Google!', 'success');
           syncGoogleServices(token.access_token);
@@ -474,8 +496,10 @@ export const App: React.FC = () => {
       await logoutGoogle(true);
       logoutMicrosoft();
       setGoogleUser(null);
+      setIsTokenValid(false);
       showToast('התנתקת מ-Google וממקורות הענן (הרשאה בוטלה בשרת)', 'success');
     } catch (e: any) {
+      setIsTokenValid(false);
       showToast('התנתקות הושלמה מקומית', 'success');
     }
   };
@@ -1024,6 +1048,7 @@ export const App: React.FC = () => {
         overdueTasksCount={overdueTasks.length}
         onOpenMorningReview={() => setIsMorningReviewOpen(true)}
         googleUser={googleUser}
+        isGoogleConnected={isTokenValid}
         isSyncing={isSyncing}
         onConnectGoogle={handleConnectGoogle}
         onSyncGoogle={() => syncGoogleServices()}

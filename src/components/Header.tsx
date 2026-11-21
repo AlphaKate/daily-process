@@ -32,6 +32,7 @@ interface HeaderProps {
   onOpenMorningReview?: () => void;
   // Google Auth & Sync
   googleUser: GoogleUser | null;
+  isGoogleConnected?: boolean;
   isSyncing: boolean;
   onConnectGoogle: () => void;
   onSyncGoogle: () => void;
@@ -58,6 +59,7 @@ export const Header: React.FC<HeaderProps> = ({
   overdueTasksCount,
   onOpenMorningReview,
   googleUser,
+  isGoogleConnected = true,
   isSyncing,
   onConnectGoogle,
   onSyncGoogle,
@@ -107,27 +109,49 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-1 shrink-0">
             {/* Google Sync Status / Connect Button */}
             {googleUser ? (
-              <div className="flex items-center gap-0.5 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 p-1 rounded-xl">
-                <button
-                  onClick={onSyncGoogle}
-                  disabled={isSyncing}
-                  className="p-1 text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 disabled:opacity-50"
-                  title="סנכרן מול Google Drive & Calendar"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                </button>
-                <button
-                  onClick={onOpenSecurityModal || onLogoutGoogle}
-                  className="p-1 text-slate-400 hover:text-rose-500 transition-colors"
-                  title="אבטחה והתנתקות מ-Google"
-                >
-                  <LogOut className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                </button>
-              </div>
+              isGoogleConnected ? (
+                /* Connected & Token is Valid */
+                <div className="flex items-center gap-0.5 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-800 p-1 rounded-xl">
+                  <button
+                    onClick={onSyncGoogle}
+                    disabled={isSyncing}
+                    className="p-1 text-emerald-700 dark:text-emerald-300 hover:text-emerald-800 disabled:opacity-50 cursor-pointer"
+                    title="סנכרן כעת מול Google Drive, Calendar & Contacts"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                  </button>
+                  <button
+                    onClick={onOpenSecurityModal || onLogoutGoogle}
+                    className="p-1 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+                    title="אבטחה והתנתקות מ-Google"
+                  >
+                    <LogOut className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                /* Google User saved, but Token Expired -> One-click Reconnect without logging out */
+                <div className="flex items-center gap-1 bg-amber-50 dark:bg-amber-950/70 border border-amber-300 dark:border-amber-700 px-2 py-1 rounded-xl shadow-xs">
+                  <button
+                    onClick={onConnectGoogle}
+                    className="flex items-center gap-1 text-amber-800 dark:text-amber-200 hover:text-amber-900 dark:hover:text-amber-100 text-[11px] sm:text-xs font-bold transition-all cursor-pointer"
+                    title="תוקף החיבור פג — לחצי כאן לחידוש החיבור והסנכרון בלחיצה אחת"
+                  >
+                    <LogIn className="w-3.5 h-3.5 stroke-[2.5] text-amber-600 dark:text-amber-400" />
+                    <span>חדש חיבור</span>
+                  </button>
+                  <button
+                    onClick={onOpenSecurityModal || onLogoutGoogle}
+                    className="p-0.5 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+                    title="אבטחה והתנתקות מ-Google"
+                  >
+                    <LogOut className="w-3 h-3" />
+                  </button>
+                </div>
+              )
             ) : (
               <button
                 onClick={onConnectGoogle}
-                className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[11px] sm:text-xs font-bold rounded-xl shadow-sm transition-all"
+                className="flex items-center gap-1 p-1.5 sm:px-2.5 sm:py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[11px] sm:text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer"
                 title="התחברות לחשבון Google כדי לסנכרן יומן ומסמכי יעדים"
               >
                 <LogIn className="w-3.5 h-3.5 stroke-[2.5]" />
