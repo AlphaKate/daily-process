@@ -21,6 +21,7 @@ import {
   SUPER_LIST_INVITE_URL
 } from '../services/superListStorage';
 import { getStoredToken, GOOGLE_DRIVE_FOLDER_ID } from '../services/googleAuth';
+import { isBirthdayTaskCheck } from '../services/googleContacts';
 import {
   ChevronDown,
   ChevronUp,
@@ -330,7 +331,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
 
   // Google Contacts Birthdays count for today
   const birthdayTasksForDay = tasks.filter(
-    t => !t.isDeleted && (t.id.startsWith('gcontact-') || Boolean(t.birthdayGreeting))
+    t => !t.isDeleted && isBirthdayTaskCheck(t)
   );
   const birthdaysCount = birthdayTasksForDay.length;
 

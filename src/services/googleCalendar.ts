@@ -1,4 +1,9 @@
 import { Task } from '../types';
+import {
+  isBirthdayTaskCheck,
+  extractBirthdayPersonName,
+  getDefaultBirthdayGreeting
+} from './googleContacts';
 
 export interface ConferenceEntryPoint {
   entryPointType?: string; // 'video' | 'phone' | 'sip' | 'more'
@@ -216,8 +221,33 @@ export const fetchCalendarEventsWindow = async (
   }
 
   const data = await response.json();
+  const allEvents: CalendarEvent[] = [...(data.items || [])];
+
+  // Also query Google Contacts Birthdays calendar in Google Calendar (addressbook#contacts@group.v.calendar.google.com)
+  try {
+    const bdayCalendarId = 'addressbook#contacts@group.v.calendar.google.com';
+    const bdayUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
+      bdayCalendarId
+    )}/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(
+      timeMax
+    )}&singleEvents=true&maxResults=250`;
+
+    const bdayRes = await fetch(bdayUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+
+    if (bdayRes.ok) {
+      const bdayData = await bdayRes.json();
+      if (bdayData.items && Array.isArray(bdayData.items)) {
+        allEvents.push(...bdayData.items);
+      }
+    }
+  } catch (bdayErr) {
+    console.warn('Google Contacts calendar fetch notice (optional):', bdayErr);
+  }
+
   return {
-    events: data.items || [],
+    events: allEvents,
     windowStart: formatLocalYMD(startWindow),
     windowEnd: formatLocalYMD(endWindow)
   };
@@ -391,6 +421,12 @@ export const syncCalendarEventsToTasks = async (
     const taskLink = meetingLink || event.htmlLink || undefined;
     const description = buildTaskDescription(event, meetingLink);
 
+    // Detect if this calendar event is a Birthday event (from Google Contacts calendar or summary)
+    const isBirthday = isBirthdayTaskCheck({ title, description, id: eventTaskId });
+    const contactName = isBirthday ? extractBirthdayPersonName(title) : undefined;
+    const finalTitle = isBirthday && !title.includes('🎂') ? `🎂 ${title}` : title;
+    const birthdayGreeting = isBirthday ? getDefaultBirthdayGreeting(contactName || title) : undefined;
+
     // Find if task already exists (by ID, or by identical title and category)
     const existing = existingTasks.find(t => t.id === eventTaskId);
 
@@ -403,20 +439,23 @@ export const syncCalendarEventsToTasks = async (
       // Check if DATE changed (e.g. moved from tomorrow to today!)
       const dateChanged = existing.date !== eventDateStr;
       const timeChanged = (existing.time || undefined) !== (timeStr || undefined);
-      const titleChanged = existing.title !== title;
+      const titleChanged = existing.title !== finalTitle;
       const durationChanged = (existing.durationMinutes || undefined) !== (duration || undefined);
       const linkChanged = (existing.link || undefined) !== (taskLink || undefined);
       const descChanged = existing.description !== description;
+      const bdayGreetingChanged = isBirthday && !existing.birthdayGreeting;
 
-      if (dateChanged || timeChanged || titleChanged || durationChanged || linkChanged || descChanged) {
+      if (dateChanged || timeChanged || titleChanged || durationChanged || linkChanged || descChanged || bdayGreetingChanged) {
         updatedTasks.push({
           ...existing,
-          date: eventDateStr, // <--- CRITICAL FIX: Updates date to the event's current date!
+          date: eventDateStr,
           time: timeStr,
-          title,
+          title: finalTitle,
           durationMinutes: duration,
           link: taskLink,
           description,
+          contactName: existing.contactName || contactName,
+          birthdayGreeting: existing.birthdayGreeting || birthdayGreeting,
           updatedAt: now
         });
       }
@@ -424,7 +463,7 @@ export const syncCalendarEventsToTasks = async (
       // New calendar event -> add to Must Do
       newTasks.push({
         id: eventTaskId,
-        title,
+        title: finalTitle,
         description,
         category: 'must_do',
         completed: false,
@@ -432,6 +471,8 @@ export const syncCalendarEventsToTasks = async (
         time: timeStr,
         durationMinutes: duration,
         link: taskLink,
+        contactName,
+        birthdayGreeting,
         createdAt: now,
         updatedAt: now
       });

@@ -26,7 +26,10 @@ import { sanitizeUrl } from '../services/securitySanitizer';
 import { QuickRescheduleSheet } from './QuickRescheduleSheet';
 import {
   generateBirthdayGreetingVariants,
-  formatWhatsAppBirthdayLink
+  getDefaultBirthdayGreeting,
+  formatWhatsAppBirthdayLink,
+  isBirthdayTaskCheck,
+  extractBirthdayPersonName
 } from '../services/googleContacts';
 
 export interface TaskItemProps {
@@ -184,18 +187,22 @@ export const TaskItem: React.FC<TaskItemProps> = ({
     }
   };
 
-  const isBirthdayTask = task.id.startsWith('gcontact-') || Boolean(task.birthdayGreeting);
+  const isBirthdayTask = isBirthdayTaskCheck(task);
+  const derivedName = extractBirthdayPersonName(task.title, task.contactName);
   const [greetingIndex, setGreetingIndex] = useState(0);
   const [customGreeting, setCustomGreeting] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
 
   const greetingOptions = React.useMemo(() => {
     if (!isBirthdayTask) return [];
-    const derivedName = task.contactName || task.title.replace(/^🎂\s*יום הולדת ל?/, '').trim();
     return generateBirthdayGreetingVariants(derivedName, task.birthdayAge);
-  }, [isBirthdayTask, task.contactName, task.title, task.birthdayAge]);
+  }, [isBirthdayTask, derivedName, task.birthdayAge]);
 
-  const activeGreeting = customGreeting || task.birthdayGreeting || greetingOptions[greetingIndex] || '';
+  const activeGreeting =
+    customGreeting ||
+    task.birthdayGreeting ||
+    greetingOptions[greetingIndex] ||
+    getDefaultBirthdayGreeting(derivedName, task.birthdayAge);
 
   const handleCycleGreeting = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -492,23 +499,26 @@ export const TaskItem: React.FC<TaskItemProps> = ({
             className={`cursor-pointer select-none break-words ${hasDetails ? 'hover:text-emerald-600 dark:hover:text-emerald-400' : ''}`}
           >
             <h3
-              className={`text-sm sm:text-base font-bold leading-snug transition-colors break-words ${
+              className={`text-sm sm:text-base font-bold leading-snug transition-colors break-words flex items-center gap-1.5 flex-wrap ${
                 task.completed
                   ? 'line-through text-slate-400 dark:text-slate-500 font-normal'
                   : 'text-slate-900 dark:text-slate-100'
               }`}
             >
-              {task.title}
+              {isBirthdayTask && !task.title.includes('🎂') && (
+                <span className="text-base sm:text-lg shrink-0">🎂</span>
+              )}
+              <span>{task.title}</span>
             </h3>
           </div>
 
-          {/* Birthday Greeting Card - shown directly when task is not completed, or when expanded */}
-          {isBirthdayTask && (isExpanded || !task.completed) && (
-            <div className="mt-2.5 p-3 rounded-2xl bg-gradient-to-r from-pink-50/90 via-rose-50/70 to-purple-50/80 dark:from-pink-950/40 dark:via-rose-950/30 dark:to-purple-950/40 border border-pink-200/90 dark:border-pink-800/60 shadow-xs space-y-2">
+          {/* Birthday Greeting Card - shown directly on all birthday tasks */}
+          {isBirthdayTask && (
+            <div className="mt-2.5 p-3 rounded-2xl bg-gradient-to-r from-pink-50/95 via-rose-50/80 to-purple-50/90 dark:from-pink-950/45 dark:via-rose-950/35 dark:to-purple-950/45 border-2 border-pink-300 dark:border-pink-700 shadow-xs space-y-2">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-pink-800 dark:text-pink-200">
-                  <Sparkles className="w-3.5 h-3.5 text-pink-500" />
-                  <span>הצעת ברכה לשליחה:</span>
+                  <span className="text-sm">🎂</span>
+                  <span>הצעת ברכה לשליחה ל{derivedName}:</span>
                   {task.birthdayAge && (
                     <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded-full bg-pink-200 dark:bg-pink-900 text-pink-900 dark:text-pink-100">
                       גיל {task.birthdayAge} 🎈
@@ -543,7 +553,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
                   }`}
                   title="העתק ברכה ללוח"
                 >
-                  {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  {isCopied ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{isCopied ? 'הועתק בהצלחה! ✓' : 'העתק ברכה 📋'}</span>
                 </button>
 
@@ -552,7 +562,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all shadow-emerald-500/20"
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-all shadow-emerald-500/20 cursor-pointer"
                   title="שלח ברכה ישירות בוואטסאפ"
                 >
                   <MessageCircle className="w-3.5 h-3.5" />

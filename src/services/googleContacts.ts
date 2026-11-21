@@ -57,6 +57,35 @@ export const getDefaultBirthdayGreeting = (name: string, age?: number): string =
 };
 
 /**
+ * Detects whether any task is a birthday task, regardless of source (Contacts, Calendar, Voice, Manual)
+ */
+export const isBirthdayTaskCheck = (task: {
+  id?: string;
+  title?: string;
+  description?: string;
+  birthdayGreeting?: string;
+}): boolean => {
+  if (task.id && (task.id.startsWith('gcontact-') || task.id.includes('bday'))) return true;
+  if (Boolean(task.birthdayGreeting)) return true;
+  const text = `${task.title || ''} ${task.description || ''}`;
+  return /יום\s*הולדת|יומהולדת|יום-הולדת|\bbirthday\b|\bbday\b|🎂|🎈/i.test(text);
+};
+
+/**
+ * Extracts the person's name from birthday task titles (Hebrew and English)
+ */
+export const extractBirthdayPersonName = (title: string, contactName?: string): string => {
+  if (contactName && contactName.trim()) return contactName.trim();
+  let clean = (title || '').replace(/[🎂🎈🎉]/g, '').trim();
+  clean = clean.replace(/^(?:משימה:?\s*)?(?:יום\s*הולדת|יומהולדת|יום-הולדת)\s*(?:של|ל|לכבוד|-)?\s*/i, '');
+  clean = clean.replace(/^birthday\s*(?:of)?\s*/i, '');
+  clean = clean.replace(/\s*-\s*(?:יום\s*הולדת|יומהולדת|יום-הולדת).*$/i, '');
+  clean = clean.replace(/'s\s*birthday.*$/i, '');
+  clean = clean.replace(/\((?:גיל\s*)?\d+\)/g, '').trim();
+  return clean || 'חבר/ה יקר/ה';
+};
+
+/**
  * Generates a direct WhatsApp click-to-chat URL with the greeting pre-filled
  */
 export const formatWhatsAppBirthdayLink = (phone?: string, text?: string): string => {
@@ -123,11 +152,36 @@ export const fetchGoogleContactsBirthdays = async (
         const birthdays = person.birthdays || [];
         if (!birthdays || birthdays.length === 0) continue;
 
-        // Find birthday with valid month and day
-        const validBday = birthdays.find(
-          (b: any) => b.date && typeof b.date.month === 'number' && typeof b.date.day === 'number'
-        );
-        if (!validBday) continue;
+        // Find birthday with valid month and day (supporting date object or formatted text)
+        let birthMonth: number | undefined = undefined;
+        let birthDay: number | undefined = undefined;
+        let birthYear: number | undefined = undefined;
+
+        for (const b of birthdays) {
+          if (b.date && typeof b.date.month === 'number' && typeof b.date.day === 'number') {
+            birthMonth = b.date.month;
+            birthDay = b.date.day;
+            if (typeof b.date.year === 'number') birthYear = b.date.year;
+            break;
+          } else if (b.text && typeof b.text === 'string') {
+            const iso = b.text.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+            if (iso) {
+              birthYear = parseInt(iso[1], 10);
+              birthMonth = parseInt(iso[2], 10);
+              birthDay = parseInt(iso[3], 10);
+              break;
+            }
+            const dmy = b.text.match(/^(\d{1,2})[-/.](\d{1,2})(?:[-/.](\d{4}))?/);
+            if (dmy) {
+              birthDay = parseInt(dmy[1], 10);
+              birthMonth = parseInt(dmy[2], 10);
+              if (dmy[3]) birthYear = parseInt(dmy[3], 10);
+              break;
+            }
+          }
+        }
+
+        if (birthMonth === undefined || birthDay === undefined) continue;
 
         const names = person.names || [];
         const primaryName = names.find((n: any) => n.metadata?.primary) || names[0];
@@ -159,9 +213,9 @@ export const fetchGoogleContactsBirthdays = async (
           displayName,
           givenName,
           familyName,
-          birthMonth: validBday.date.month,
-          birthDay: validBday.date.day,
-          birthYear: typeof validBday.date.year === 'number' ? validBday.date.year : undefined,
+          birthMonth,
+          birthDay,
+          birthYear,
           phone,
           email,
           photoUrl

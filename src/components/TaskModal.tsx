@@ -4,6 +4,11 @@ import { X, Link as LinkIcon, Milestone, AlertCircle, FileText, Clock, Calendar 
 import { scanTextForSensitiveData, DLPFinding } from '../services/dlpService';
 import { DLPWarningModal } from './DLPWarningModal';
 import { getStoredToken } from '../services/googleAuth';
+import {
+  isBirthdayTaskCheck,
+  extractBirthdayPersonName,
+  getDefaultBirthdayGreeting
+} from '../services/googleContacts';
 
 interface TaskModalProps {
   isOpen: boolean;
@@ -96,8 +101,15 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       }
     }
 
+    const isBirthday = isBirthdayTaskCheck({ title, description, id: initialTask?.id });
+    const contactName = isBirthday ? extractBirthdayPersonName(title, initialTask?.contactName) : initialTask?.contactName;
+    const finalTitle = isBirthday && !title.includes('🎂') ? `🎂 ${title.trim()}` : title.trim();
+    const birthdayGreeting = isBirthday
+      ? (initialTask?.birthdayGreeting || getDefaultBirthdayGreeting(contactName || title))
+      : initialTask?.birthdayGreeting;
+
     onSave({
-      title: title.trim(),
+      title: finalTitle,
       description: description.trim() || undefined,
       category,
       date,
@@ -108,9 +120,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       goalDocumentId: resolvedGoalDocId,
       addToCalendar,
       contactId: initialTask?.contactId,
-      contactName: initialTask?.contactName,
+      contactName,
       contactPhone: initialTask?.contactPhone,
-      birthdayGreeting: initialTask?.birthdayGreeting,
+      birthdayGreeting,
       birthdayAge: initialTask?.birthdayAge
     });
     onClose();
