@@ -20,7 +20,6 @@ export interface LearningNotebook {
   createdAt: string;
   updatedAt: string;
 }
-
 export interface Task {
   id: string;
   title: string;
