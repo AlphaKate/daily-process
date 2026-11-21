@@ -59,6 +59,7 @@ interface DailyProcessProps {
   onTasksSynced?: (newTasks: Task[], updatedTasks: Task[]) => void;
   overdueTasksCount?: number;
   onOpenMorningReview?: () => void;
+  onOpenBirthdaysModal?: () => void;
 }
 
 const HEBREW_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
@@ -79,6 +80,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
   onTasksSynced: _onTasksSynced,
   overdueTasksCount,
   onOpenMorningReview,
+  onOpenBirthdaysModal,
 }) => {
   const [showDoneSection, setShowDoneSection] = useState(true);
   const [goalsViewMode, setGoalsViewMode] = useState<'day' | 'week' | 'month'>('day');
@@ -413,19 +415,20 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                     </span>
                   </span>
                 )}
-                {birthdaysCount > 0 && (
-                  <span
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full bg-pink-50 text-pink-700 dark:bg-pink-950/70 dark:text-pink-300 border border-pink-200 dark:border-pink-800 shadow-2xs"
-                    title="ימי הולדת שסונכרנו מ-Google Contacts להיום"
-                  >
-                    <span>🎂</span>
-                    <span>
-                      {birthdaysCount === 1
-                        ? 'יום הולדת 1 היום 🎉'
-                        : `${birthdaysCount} ימי הולדת היום 🎉`}
-                    </span>
+                {/* Birthdays Pill & Direct Modal Trigger */}
+                <button
+                  type="button"
+                  onClick={onOpenBirthdaysModal}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-full bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/70 dark:hover:bg-pink-900/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800 shadow-2xs transition-all cursor-pointer"
+                  title="לחצי לפתיחת לוח ימי הולדת וברכות 🎂"
+                >
+                  <span className="text-sm leading-none">🎂</span>
+                  <span>
+                    {birthdaysCount > 0
+                      ? (birthdaysCount === 1 ? 'יום הולדת 1 היום 🎉' : `${birthdaysCount} ימי הולדת היום 🎉`)
+                      : 'ימי הולדת וברכות'}
                   </span>
-                )}
+                </button>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 פגישות, התחייבויות קריטיות ודברים שחייבים לקרות היום

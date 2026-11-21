@@ -14,6 +14,53 @@ export interface GoogleContactBirthday {
   photoUrl?: string;
 }
 
+export const getCachedContactsBirthdays = (): GoogleContactBirthday[] => {
+  try {
+    const raw = localStorage.getItem('google_contacts_birthdays_cache_v1');
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+};
+
+export const saveCachedContactsBirthdays = (contacts: GoogleContactBirthday[]): void => {
+  try {
+    localStorage.setItem('google_contacts_birthdays_cache_v1', JSON.stringify(contacts));
+  } catch (e) {
+    console.warn('Failed to cache contacts birthdays:', e);
+  }
+};
+
+export const addCustomBirthday = (
+  name: string,
+  month: number,
+  day: number,
+  year?: number,
+  phone?: string
+): GoogleContactBirthday => {
+  const existing = getCachedContactsBirthdays();
+  const contactId = `custom-bday-${Date.now()}`;
+  const newContact: GoogleContactBirthday = {
+    resourceName: `custom/${contactId}`,
+    contactId,
+    displayName: name.trim(),
+    birthMonth: month,
+    birthDay: day,
+    birthYear: year,
+    phone: phone?.trim()
+  };
+  const updated = [newContact, ...existing];
+  saveCachedContactsBirthdays(updated);
+  return newContact;
+};
+
+export const deleteCustomBirthday = (contactId: string): void => {
+  const existing = getCachedContactsBirthdays();
+  const updated = existing.filter(c => c.contactId !== contactId);
+  saveCachedContactsBirthdays(updated);
+};
+
 export interface ContactsSyncResult {
   newTasks: Task[];
   updatedTasks: Task[];
@@ -226,6 +273,11 @@ export const fetchGoogleContactsBirthdays = async (
       pageCount++;
     } while (nextPageToken && pageCount < maxPages);
 
+    if (contactsWithBirthdays.length > 0) {
+      const customOnly = getCachedContactsBirthdays().filter(c => c.resourceName.startsWith('custom/'));
+      saveCachedContactsBirthdays([...customOnly, ...contactsWithBirthdays]);
+    }
+
     return { contacts: contactsWithBirthdays, scopeRequired: false };
   } catch (err: any) {
     console.warn('Error fetching Google Contacts birthdays:', err);
@@ -290,7 +342,10 @@ export const syncContactsBirthdaysToTasks = async (
 
   const { contacts, scopeRequired } = await fetchGoogleContactsBirthdays(accessToken);
 
-  if (scopeRequired) {
+  const customBirthdays = getCachedContactsBirthdays().filter(c => c.resourceName.startsWith('custom/'));
+  const allContacts = [...contacts, ...customBirthdays];
+
+  if (scopeRequired && allContacts.length === 0) {
     return {
       newTasks: [],
       updatedTasks: [],
@@ -306,7 +361,7 @@ export const syncContactsBirthdaysToTasks = async (
 
   const nowIso = new Date().toISOString();
 
-  for (const contact of contacts) {
+  for (const contact of allContacts) {
     const occurrences = findOccurrencesInWindow(contact, windowStart, windowEnd);
 
     for (const occ of occurrences) {

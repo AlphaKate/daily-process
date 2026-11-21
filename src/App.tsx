@@ -30,7 +30,7 @@ import {
 import { updateGoogleDocGoalStatus } from './services/googleDocs';
 import { syncCalendarEventsToTasks, createGoogleCalendarEvent } from './services/googleCalendar';
 import { syncSuperListWithDrive } from './services/superListStorage';
-import { syncContactsBirthdaysToTasks } from './services/googleContacts';
+import { syncContactsBirthdaysToTasks, isBirthdayTaskCheck } from './services/googleContacts';
 import { checkUrlForMicrosoftToken, getStoredMicrosoftToken, logoutMicrosoft } from './services/microsoftAuth';
 import { getSelectedToDoList, updateMicrosoftTaskStatus } from './services/microsoftToDo';
 import { Header } from './components/Header';
@@ -42,6 +42,7 @@ import { MorningReviewModal } from './components/MorningReviewModal';
 import { TaskAlertModal } from './components/TaskAlertModal';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal';
 import { VoiceTaskModal } from './components/VoiceTaskModal';
+import { BirthdaysModal } from './components/BirthdaysModal';
 import { SecurityDisconnectModal } from './components/SecurityDisconnectModal';
 import { DisplaySettingsModal } from './components/DisplaySettingsModal';
 import { AppPrivacyShield } from './components/AppPrivacyShield';
@@ -92,6 +93,9 @@ export const App: React.FC = () => {
 
   // Voice Task Modal state
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+
+  // Birthdays & Greetings Modal state
+  const [isBirthdaysModalOpen, setIsBirthdaysModalOpen] = useState(false);
 
   // Security, Disconnect & Emergency Wipe Modal state
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
@@ -1034,6 +1038,10 @@ export const App: React.FC = () => {
 
   const filteredTasksForDate = tasks.filter(t => !t.isDeleted && t.date === currentDate);
 
+  const birthdaysTodayCount = tasks.filter(
+    t => !t.isDeleted && t.date === currentDate && isBirthdayTaskCheck(t)
+  ).length;
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors duration-200 overflow-x-hidden w-full max-w-full">
       {/* Top Header */}
@@ -1047,6 +1055,8 @@ export const App: React.FC = () => {
         onOpenAddTask={() => handleOpenAddTask('must_do')}
         overdueTasksCount={overdueTasks.length}
         onOpenMorningReview={() => setIsMorningReviewOpen(true)}
+        onOpenBirthdaysModal={() => setIsBirthdaysModalOpen(true)}
+        birthdaysTodayCount={birthdaysTodayCount}
         googleUser={googleUser}
         isGoogleConnected={isTokenValid}
         isSyncing={isSyncing}
@@ -1105,6 +1115,7 @@ export const App: React.FC = () => {
             onTasksSynced={handleTasksSynced}
             overdueTasksCount={overdueTasks.length}
             onOpenMorningReview={() => setIsMorningReviewOpen(true)}
+            onOpenBirthdaysModal={() => setIsBirthdaysModalOpen(true)}
           />
         ) : (
           <StatsView
@@ -1185,6 +1196,30 @@ export const App: React.FC = () => {
         onClose={() => setIsDisplaySettingsOpen(false)}
         settings={settings}
         onSaveSettings={handleSaveDisplaySettings}
+      />
+
+      {/* Birthdays & Greetings Hub Modal */}
+      <BirthdaysModal
+        isOpen={isBirthdaysModalOpen}
+        onClose={() => setIsBirthdaysModalOpen(false)}
+        currentDate={currentDate}
+        tasks={tasks}
+        googleUser={googleUser}
+        isGoogleConnected={isTokenValid}
+        onSyncGoogle={() => syncGoogleServices()}
+        onConnectGoogle={handleConnectGoogle}
+        onScheduleBirthdayTask={(bdayTask) => {
+          const existingIdx = tasks.findIndex(t => t.id === bdayTask.id);
+          let updated: Task[];
+          if (existingIdx !== -1) {
+            updated = [...tasks];
+            updated[existingIdx] = bdayTask;
+          } else {
+            updated = [bdayTask, ...tasks];
+          }
+          persistTasks(updated);
+        }}
+        showToast={showToast}
       />
 
       {/* App Switcher & Background Privacy Shield */}
