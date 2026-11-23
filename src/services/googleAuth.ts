@@ -1,5 +1,69 @@
 export const GOOGLE_CLIENT_ID = '1090829284866-j6lbc9vcqdufd6mr8h62vm4dpnq2djjm.apps.googleusercontent.com';
-export const GOOGLE_DRIVE_FOLDER_ID = '1skpegshPUHuIYPVuxHQdpSpXeIwGmDBd';
+
+/**
+ * Key for storing user's private Google Drive folder ID in local device storage.
+ * Completely decoupled from repository source code for privacy and multi-user support.
+ */
+const DRIVE_FOLDER_KEY = 'google_drive_folder_id_v1';
+
+/**
+ * Extracts a clean Drive folder ID from full URLs or raw IDs.
+ * Handles:
+ * - https://drive.google.com/drive/folders/1A2b3C4d5E6f7G8h9I0jKlMnOpQrStUvW?usp=sharing
+ * - https://drive.google.com/drive/u/0/folders/1A2b3C4d5E6f7G8h9I0jKlMnOpQrStUvW
+ * - ?id=1A2b3C4d5E6f7G8h9I0jKlMnOpQrStUvW
+ * - 1A2b3C4d5E6f7G8h9I0jKlMnOpQrStUvW
+ */
+export const extractDriveFolderId = (input?: string | null): string => {
+  if (!input) return '';
+  const trimmed = input.trim();
+  const folderMatch = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (folderMatch && folderMatch[1]) {
+    return folderMatch[1];
+  }
+  const idMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (idMatch && idMatch[1]) {
+    return idMatch[1];
+  }
+  return trimmed.split('?')[0].replace(/[^a-zA-Z0-9_-]/g, '');
+};
+
+export const getStoredDriveFolderId = (): string => {
+  try {
+    return localStorage.getItem(DRIVE_FOLDER_KEY) || '';
+  } catch {
+    return '';
+  }
+};
+
+export const saveStoredDriveFolderId = (folderIdOrUrl?: string | null): string => {
+  const cleanId = extractDriveFolderId(folderIdOrUrl);
+  try {
+    if (cleanId) {
+      localStorage.setItem(DRIVE_FOLDER_KEY, cleanId);
+    } else {
+      localStorage.removeItem(DRIVE_FOLDER_KEY);
+    }
+  } catch (e) {
+    console.warn('Failed to save drive folder id:', e);
+  }
+  return cleanId;
+};
+
+export const clearStoredDriveFolderId = (): void => {
+  try {
+    localStorage.removeItem(DRIVE_FOLDER_KEY);
+  } catch (e) {
+    console.warn('Failed to clear drive folder id:', e);
+  }
+};
+
+/**
+ * Legacy getter helper for backward compatibility
+ */
+export const getEffectiveDriveFolderId = (): string => {
+  return getStoredDriveFolderId();
+};
 
 const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/drive',

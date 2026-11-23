@@ -20,8 +20,9 @@ import {
   isGoogleConnected,
   onUserProfileUpdated,
   GoogleUser,
-  GOOGLE_DRIVE_FOLDER_ID
+  getStoredDriveFolderId
 } from './services/googleAuth';
+import { DriveFolderPromptModal } from './components/DriveFolderPromptModal';
 import {
   syncDriveGoalsToTasks,
   scheduleSaveTasksToDrive,
@@ -103,6 +104,9 @@ export const App: React.FC = () => {
   // Display & Font Size Settings Modal state
   const [isDisplaySettingsOpen, setIsDisplaySettingsOpen] = useState(false);
 
+  // Google Drive Folder Configuration Prompt Modal state
+  const [isDrivePromptOpen, setIsDrivePromptOpen] = useState(false);
+
   const lastSyncTimeRef = useRef<number>(0);
 
   const showToast = (message: string, type: 'success' | 'error' | 'warning' = 'success') => {
@@ -112,14 +116,15 @@ export const App: React.FC = () => {
     }, 6000);
   };
 
-  // Helper to persist tasks both locally and to Google Drive if connected
+  // Helper to persist tasks both locally and to Google Drive if connected and folder configured
   const persistTasks = useCallback((updated: Task[]) => {
     setTasks(updated);
     saveStoredTasks(updated);
 
     const token = getStoredToken();
-    if (token) {
-      scheduleSaveTasksToDrive(GOOGLE_DRIVE_FOLDER_ID, token.access_token, updated);
+    const driveFolderId = getStoredDriveFolderId();
+    if (token && driveFolderId) {
+      scheduleSaveTasksToDrive(driveFolderId, token.access_token, updated);
     }
   }, []);
 
@@ -150,43 +155,48 @@ export const App: React.FC = () => {
     let calendarCount = 0;
     let calendarUpdatesCount = 0;
     let driveCount = 0;
+    let superCount = 0;
     const currentTasks = getStoredTasks();
     let mergedTasks = [...currentTasks];
 
     try {
-      // 1. Pull shared cross-device tasks file from Google Drive
-      try {
-        const driveStoredTasks = await loadTasksFromDriveFile(
-          GOOGLE_DRIVE_FOLDER_ID,
-          tokenObj.access_token
-        );
-        if (driveStoredTasks && driveStoredTasks.length > 0) {
-          // Merge tasks: keep newer by updatedAt, respect isDeleted tombstones
-          const taskMap = new Map<string, Task>();
-          
-          // Seed with current local tasks
-          currentTasks.forEach(t => taskMap.set(t.id, t));
+      const driveFolderId = getStoredDriveFolderId();
 
-          // Merge each remote task
-          driveStoredTasks.forEach(remoteTask => {
-            const localTask = taskMap.get(remoteTask.id);
-            if (!localTask) {
-              if (!remoteTask.isDeleted) {
-                taskMap.set(remoteTask.id, remoteTask);
-              }
-            } else {
-              const localTime = new Date(localTask.updatedAt || 0).getTime();
-              const remoteTime = new Date(remoteTask.updatedAt || 0).getTime();
-              if (remoteTime > localTime) {
-                taskMap.set(remoteTask.id, remoteTask);
-              }
-            }
-          });
+      // 1. Pull shared cross-device tasks file from Google Drive (if folder configured)
+      if (driveFolderId) {
+        try {
+          const driveStoredTasks = await loadTasksFromDriveFile(
+            driveFolderId,
+            tokenObj.access_token
+          );
+          if (driveStoredTasks && driveStoredTasks.length > 0) {
+            // Merge tasks: keep newer by updatedAt, respect isDeleted tombstones
+            const taskMap = new Map<string, Task>();
+            
+            // Seed with current local tasks
+            currentTasks.forEach(t => taskMap.set(t.id, t));
 
-          mergedTasks = Array.from(taskMap.values());
+            // Merge each remote task
+            driveStoredTasks.forEach(remoteTask => {
+              const localTask = taskMap.get(remoteTask.id);
+              if (!localTask) {
+                if (!remoteTask.isDeleted) {
+                  taskMap.set(remoteTask.id, remoteTask);
+                }
+              } else {
+                const localTime = new Date(localTask.updatedAt || 0).getTime();
+                const remoteTime = new Date(remoteTask.updatedAt || 0).getTime();
+                if (remoteTime > localTime) {
+                  taskMap.set(remoteTask.id, remoteTask);
+                }
+              }
+            });
+
+            mergedTasks = Array.from(taskMap.values());
+          }
+        } catch (driveFileErr) {
+          console.warn('Drive tasks file load warning', driveFileErr);
         }
-      } catch (driveFileErr) {
-        console.warn('Drive tasks file load warning', driveFileErr);
       }
 
       // 2. Sync Google Calendar -> Must Do (syncs rolling multi-week window for all updates, moves & deletions)
@@ -209,32 +219,33 @@ export const App: React.FC = () => {
         console.warn('Google Calendar sync warning:', calErr);
       }
 
-      // 3. Sync Google Drive Goals -> Goals
-      try {
-        const driveResult = await syncDriveGoalsToTasks(
-          GOOGLE_DRIVE_FOLDER_ID,
-          tokenObj.access_token,
-          mergedTasks,
-          currentDate
-        );
-        driveCount = driveResult.newTasks.length;
-        if (driveResult.newTasks.length > 0) {
-          mergedTasks = [...driveResult.newTasks, ...mergedTasks];
+      // 3. Sync Google Drive Goals -> Goals (if folder configured)
+      if (driveFolderId) {
+        try {
+          const driveResult = await syncDriveGoalsToTasks(
+            driveFolderId,
+            tokenObj.access_token,
+            mergedTasks,
+            currentDate
+          );
+          driveCount = driveResult.newTasks.length;
+          if (driveResult.newTasks.length > 0) {
+            mergedTasks = [...driveResult.newTasks, ...mergedTasks];
+          }
+        } catch (driveErr: any) {
+          console.warn('Google Drive sync warning:', driveErr);
         }
-      } catch (driveErr: any) {
-        console.warn('Google Drive sync warning:', driveErr);
-      }
 
-      // 4. Sync Super List (To Do) -> Drive
-      let superCount = 0;
-      try {
-        const superResult = await syncSuperListWithDrive(
-          GOOGLE_DRIVE_FOLDER_ID,
-          tokenObj.access_token
-        );
-        superCount = superResult.syncCount;
-      } catch (superErr: any) {
-        console.warn('Super list Drive sync warning:', superErr);
+        // 4. Sync Super List (To Do) -> Drive
+        try {
+          const superResult = await syncSuperListWithDrive(
+            driveFolderId,
+            tokenObj.access_token
+          );
+          superCount = superResult.syncCount;
+        } catch (superErr: any) {
+          console.warn('Super list Drive sync warning:', superErr);
+        }
       }
 
       // 5. Sync Google Contacts Birthdays -> Must Do
@@ -278,7 +289,12 @@ export const App: React.FC = () => {
         } else if (contactsScopeNeeded) {
           showToast('לסנכרון ימי הולדת מ-Google Contacts, יש להתחבר מחדש לאישור הרשאת אנשי קשר 🎂', 'warning');
         } else {
-          showToast('הנתונים סונכרנו בהצלחה מול Google Drive!', 'success');
+          showToast(
+            driveFolderId
+              ? 'הנתונים סונכרנו בהצלחה מול Google Drive!'
+              : 'יומן Google סונכרן! (לסנכרון יעדים מ-Drive, לחצי על ⚙️ להזנת תיקייה)',
+            'success'
+          );
         }
       }
     } catch (err: any) {
@@ -479,6 +495,13 @@ export const App: React.FC = () => {
           setGoogleUser(getStoredGoogleUser() || { email: 'מחובר ל-Google', name: 'משתמש Google' });
           showToast('התחברת בהצלחה לחשבון Google!', 'success');
           syncGoogleServices(token.access_token);
+
+          // If no Drive folder configured yet, prompt user nicely to set it
+          if (!getStoredDriveFolderId()) {
+            setTimeout(() => {
+              setIsDrivePromptOpen(true);
+            }, 1200);
+          }
         },
         (err) => {
           console.error('Google login error', err);
@@ -1224,6 +1247,16 @@ export const App: React.FC = () => {
         onClose={() => setIsDisplaySettingsOpen(false)}
         settings={settings}
         onSaveSettings={handleSaveDisplaySettings}
+      />
+
+      {/* Google Drive Folder Setup Prompt Modal */}
+      <DriveFolderPromptModal
+        isOpen={isDrivePromptOpen}
+        onClose={() => setIsDrivePromptOpen(false)}
+        onSaved={(_folderId) => {
+          showToast('תיקיית Google Drive חוברה בהצלחה! מסנכרן...', 'success');
+          syncGoogleServices();
+        }}
       />
 
       {/* Birthdays & Greetings Hub Modal */}

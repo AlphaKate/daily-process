@@ -9,9 +9,11 @@ import {
   Eye,
   Sparkles,
   Contrast,
-  LayoutList
+  LayoutList,
+  FolderOpen
 } from 'lucide-react';
 import { AppSettings, FontSizeSetting, ThemeSetting, FontFamilySetting } from '../types';
+import { getStoredDriveFolderId, saveStoredDriveFolderId } from '../services/googleAuth';
 
 interface DisplaySettingsModalProps {
   isOpen: boolean;
@@ -39,6 +41,7 @@ export const DisplaySettingsModal: React.FC<DisplaySettingsModalProps> = ({
   const [highContrast, setHighContrast] = useState<boolean>(Boolean(settings.highContrast));
   const [cardDensity, setCardDensity] = useState<'comfortable' | 'compact'>(settings.cardDensity || 'comfortable');
   const [confettiEnabled, setConfettiEnabled] = useState<boolean>(settings.confettiEnabled !== false);
+  const [driveFolderInput, setDriveFolderInput] = useState<string>(() => getStoredDriveFolderId());
 
   if (!isOpen) return null;
 
@@ -54,6 +57,7 @@ export const DisplaySettingsModal: React.FC<DisplaySettingsModalProps> = ({
   };
 
   const handleSave = () => {
+    saveStoredDriveFolderId(driveFolderInput);
     const updated: AppSettings = {
       ...settings,
       theme: currentTheme,
@@ -316,6 +320,57 @@ export const DisplaySettingsModal: React.FC<DisplaySettingsModalProps> = ({
                 className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
               />
             </label>
+
+            {/* Google Drive Folder Settings Section */}
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-200 dark:border-emerald-800/60 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                    <FolderOpen className="w-4 h-4 stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white block">
+                      תיקיית יעדים ב-Google Drive
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      סנכרון ענן למסמכי יעדים, למידה ורשימת סופר
+                    </span>
+                  </div>
+                </div>
+                {driveFolderInput ? (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300">
+                    מוגדר ✓
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300">
+                    לא הוגדר
+                  </span>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <input
+                  type="text"
+                  value={driveFolderInput}
+                  onChange={e => setDriveFolderInput(e.target.value)}
+                  placeholder="הדביקי קישור לתיקיית Drive (https://drive.google.com/...)"
+                  className="w-full px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs font-mono ltr text-left focus:ring-2 focus:ring-emerald-500 outline-hidden"
+                  dir="ltr"
+                />
+                <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 pt-0.5">
+                  <span>🔒 נשמר מקומית במכשיר בלבד</span>
+                  {driveFolderInput && (
+                    <button
+                      type="button"
+                      onClick={() => setDriveFolderInput('')}
+                      className="text-rose-500 hover:underline font-semibold cursor-pointer"
+                    >
+                      נקה תיקייה
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

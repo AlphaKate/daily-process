@@ -20,7 +20,7 @@ import {
   syncSuperListWithDrive,
   SUPER_LIST_INVITE_URL
 } from '../services/superListStorage';
-import { getStoredToken, GOOGLE_DRIVE_FOLDER_ID } from '../services/googleAuth';
+import { getStoredToken, getStoredDriveFolderId } from '../services/googleAuth';
 import { isBirthdayTaskCheck, extractBirthdayPersonName } from '../services/googleContacts';
 import {
   ChevronDown,
@@ -326,12 +326,17 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
     setSuperSyncMessage(null);
     try {
       const token = getStoredToken();
-      if (!token?.access_token) {
+      const driveFolderId = getStoredDriveFolderId();
+      if (!token?.access_token || !driveFolderId) {
         const loaded = getSuperListItems();
         setSuperItems(loaded);
-        setSuperSyncMessage({ text: 'הרשימה רועננה מקומית' });
+        setSuperSyncMessage({
+          text: !driveFolderId && token?.access_token
+            ? 'הרשימה רועננה מקומית (הגדירי תיקיית Drive ב-⚙️ לסנכרון ענן)'
+            : 'הרשימה רועננה מקומית'
+        });
       } else {
-        const res = await syncSuperListWithDrive(GOOGLE_DRIVE_FOLDER_ID, token.access_token);
+        const res = await syncSuperListWithDrive(driveFolderId, token.access_token);
         setSuperItems(res.items);
         setSuperSyncMessage({ text: `סונכרנו ${res.items.length} פריטים מול הענן!` });
       }

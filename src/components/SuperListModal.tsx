@@ -21,7 +21,7 @@ import {
   syncSuperListWithDrive,
   SUPER_LIST_INVITE_URL
 } from '../services/superListStorage';
-import { getStoredToken, GOOGLE_DRIVE_FOLDER_ID } from '../services/googleAuth';
+import { getStoredToken, getStoredDriveFolderId } from '../services/googleAuth';
 
 interface SuperListModalProps {
   isOpen: boolean;
@@ -88,15 +88,18 @@ export const SuperListModal: React.FC<SuperListModalProps> = ({
     setStatusMessage(null);
     try {
       const token = getStoredToken();
-      if (!token?.access_token) {
+      const driveFolderId = getStoredDriveFolderId();
+      if (!token?.access_token || !driveFolderId) {
         // Local refresh
         loadItems();
         setStatusMessage({
-          text: 'הרשימה המקומית רועננה (חבר Google Drive לסנכרון ענן בין מכשירים)',
+          text: !driveFolderId && token?.access_token
+            ? 'הרשימה המקומית רועננה (הגדירי תיקיית Drive ב-⚙️ לסנכרון ענן)'
+            : 'הרשימה המקומית רועננה (חברי Google Drive לסנכרון ענן בין מכשירים)',
           type: 'info'
         });
       } else {
-        const res = await syncSuperListWithDrive(GOOGLE_DRIVE_FOLDER_ID, token.access_token);
+        const res = await syncSuperListWithDrive(driveFolderId, token.access_token);
         setItems(res.items);
         setStatusMessage({
           text: `סונכרן בהצלחה מול הענן! (${res.items.length} פריטים)`,
