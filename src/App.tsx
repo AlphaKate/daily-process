@@ -380,6 +380,11 @@ export const App: React.FC = () => {
       const stored = getStoredToken();
       if (stored) {
         syncGoogleServices(stored.access_token, true);
+        if (!getStoredDriveFolderId()) {
+          setTimeout(() => {
+            setIsDrivePromptOpen(true);
+          }, 1200);
+        }
       }
     }
 
@@ -484,7 +489,10 @@ export const App: React.FC = () => {
     setSettings(newSettings);
     saveAppSettings(newSettings);
     applyDisplaySettings(newSettings);
-    showToast('הגדרות התצוגה והגופן עודכנו בהצלחה!', 'success');
+    showToast('ההגדרות עודכנו בהצלחה!', 'success');
+    if (getStoredToken() && getStoredDriveFolderId()) {
+      syncGoogleServices();
+    }
   };
 
   const handleConnectGoogle = () => {
@@ -1031,6 +1039,11 @@ export const App: React.FC = () => {
       handleConnectGoogle();
       return;
     }
+    if (!getStoredDriveFolderId()) {
+      setIsDrivePromptOpen(true);
+      showToast('נא לחבר את תיקיית היעדים ב-Google Drive להשלמת הסנכרון', 'warning');
+      return;
+    }
     syncGoogleServices();
   }, [handleConnectGoogle, syncGoogleServices]);
 
@@ -1167,6 +1180,7 @@ export const App: React.FC = () => {
             overdueTasksCount={overdueTasks.length}
             onOpenMorningReview={() => setIsMorningReviewOpen(true)}
             onOpenBirthdaysModal={() => setIsBirthdaysModalOpen(true)}
+            onOpenDriveFolderPrompt={() => setIsDrivePromptOpen(true)}
           />
         ) : (
           <StatsView

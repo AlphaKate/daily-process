@@ -5,7 +5,9 @@ import {
   Check,
   Shield,
   ExternalLink,
-  HelpCircle
+  HelpCircle,
+  ClipboardPaste,
+  CheckCircle2
 } from 'lucide-react';
 import { extractDriveFolderId, saveStoredDriveFolderId, getStoredDriveFolderId } from '../services/googleAuth';
 
@@ -24,6 +26,22 @@ export const DriveFolderPromptModal: React.FC<DriveFolderPromptModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const extractedId = extractDriveFolderId(folderInput);
+
+  const handlePaste = async () => {
+    try {
+      if (navigator?.clipboard?.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          setFolderInput(text);
+          setErrorMsg(null);
+        }
+      }
+    } catch {
+      // Browser permissions fallback
+    }
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,9 +94,20 @@ export const DriveFolderPromptModal: React.FC<DriveFolderPromptModalProps> = ({
         {/* Content Body */}
         <form onSubmit={handleSave} className="p-4 sm:p-6 space-y-4">
           <div className="space-y-1.5">
-            <label className="block text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
-              קישור לתיקייה ב-Google Drive (או מזהה תיקייה):
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="block text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200">
+                קישור לתיקייה ב-Google Drive (או מזהה תיקייה):
+              </label>
+              <button
+                type="button"
+                onClick={handlePaste}
+                className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer"
+                title="הדבק קישור שהועתק ללוח"
+              >
+                <ClipboardPaste className="w-3.5 h-3.5" />
+                <span>הדבק מהלוח</span>
+              </button>
+            </div>
             <input
               type="text"
               value={folderInput}
@@ -87,9 +116,16 @@ export const DriveFolderPromptModal: React.FC<DriveFolderPromptModalProps> = ({
                 if (errorMsg) setErrorMsg(null);
               }}
               placeholder="למשל: https://drive.google.com/drive/folders/1A2b3C4d5E..."
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-850 text-slate-900 dark:text-white text-xs sm:text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all outline-hidden text-left ltr"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-850 text-slate-900 dark:text-white text-xs sm:text-sm font-medium focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all outline-hidden text-left ltr font-mono"
               dir="ltr"
+              autoFocus
             />
+            {extractedId && (
+              <div className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold pt-0.5">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">מזהה תיקייה שזוהה: <code className="font-mono">{extractedId}</code></span>
+              </div>
+            )}
             {errorMsg && (
               <p className="text-xs text-rose-500 font-semibold mt-1">
                 {errorMsg}

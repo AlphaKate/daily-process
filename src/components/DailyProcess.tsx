@@ -44,7 +44,8 @@ import {
   ShoppingBag,
   Sunrise,
   Inbox,
-  Brain
+  Brain,
+  FolderOpen
 } from 'lucide-react';
 
 interface DailyProcessProps {
@@ -61,6 +62,7 @@ interface DailyProcessProps {
   overdueTasksCount?: number;
   onOpenMorningReview?: () => void;
   onOpenBirthdaysModal?: () => void;
+  onOpenDriveFolderPrompt?: () => void;
 }
 
 const HEBREW_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
@@ -83,6 +85,7 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
   overdueTasksCount,
   onOpenMorningReview,
   onOpenBirthdaysModal,
+  onOpenDriveFolderPrompt,
 }) => {
   const [showDoneSection, setShowDoneSection] = useState(true);
   const [goalsViewMode, setGoalsViewMode] = useState<'day' | 'week' | 'month'>('day');
@@ -657,6 +660,32 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                 {m}
               </button>
             ))}
+          </div>
+        )}
+
+        {/* Missing Drive Folder Alert Banner in Goals */}
+        {!getStoredDriveFolderId() && onOpenDriveFolderPrompt && (
+          <div className="p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-transparent dark:from-emerald-950/40 dark:via-teal-950/30 border border-emerald-300 dark:border-emerald-800 flex items-center justify-between gap-3 shadow-2xs animate-in fade-in">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                <FolderOpen className="w-4 h-4 stroke-[2.5]" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs sm:text-sm font-bold text-emerald-950 dark:text-emerald-100 truncate">
+                  חברי את תיקיית היעדים ב-Google Drive
+                </div>
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-300 truncate">
+                  הדביקי את קישור התיקייה לסנכרון יעדים, תוכניות למידה ורשימת סופר
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenDriveFolderPrompt}
+              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs shrink-0 shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>חברי תיקייה 🔗</span>
+            </button>
           </div>
         )}
 

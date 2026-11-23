@@ -17,14 +17,31 @@ const DRIVE_FOLDER_KEY = 'google_drive_folder_id_v1';
 export const extractDriveFolderId = (input?: string | null): string => {
   if (!input) return '';
   const trimmed = input.trim();
+
+  // 1. Direct match /folders/<id>
   const folderMatch = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/);
   if (folderMatch && folderMatch[1]) {
     return folderMatch[1];
   }
+
+  // 2. /d/<id>
+  const dMatch = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (dMatch && dMatch[1]) {
+    return dMatch[1];
+  }
+
+  // 3. Query param ?id=<id> or &id=<id>
   const idMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
   if (idMatch && idMatch[1]) {
     return idMatch[1];
   }
+
+  // 4. Any long token characteristic of Google IDs (20 to 55 characters)
+  const tokenMatch = trimmed.match(/\b([a-zA-Z0-9_-]{20,55})\b/);
+  if (tokenMatch && tokenMatch[1]) {
+    return tokenMatch[1];
+  }
+
   return trimmed.split('?')[0].replace(/[^a-zA-Z0-9_-]/g, '');
 };
 
