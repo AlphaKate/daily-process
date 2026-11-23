@@ -92,6 +92,34 @@ const GOOGLE_SCOPES = [
 
 const TOKEN_KEY = 'google_oauth_token_v1';
 const USER_KEY = 'google_user_info_v1';
+const GOOGLE_LINKED_KEY = 'google_account_linked_v1';
+
+export const isGoogleAccountLinked = (): boolean => {
+  try {
+    if (localStorage.getItem(GOOGLE_LINKED_KEY) === 'true') return true;
+    // Backward compatibility: If stored google user info exists and wasn't intentionally logged out
+    if (localStorage.getItem(USER_KEY)) return true;
+    return false;
+  } catch {
+    return false;
+  }
+};
+
+export const setGoogleAccountLinked = (linked: boolean): void => {
+  try {
+    if (linked) {
+      localStorage.setItem(GOOGLE_LINKED_KEY, 'true');
+    } else {
+      localStorage.removeItem(GOOGLE_LINKED_KEY);
+    }
+  } catch (e) {
+    console.warn('Failed to update google account linked flag:', e);
+  }
+};
+
+export const isGoogleSessionExpired = (): boolean => {
+  return isGoogleAccountLinked() && !isGoogleConnected();
+};
 
 export interface GoogleUser {
   email: string;
@@ -363,6 +391,7 @@ export const getStoredToken = (): GoogleAuthToken | null => {
 
 export const saveStoredToken = (token: GoogleAuthToken): void => {
   localStorage.setItem(TOKEN_KEY, JSON.stringify(token));
+  setGoogleAccountLinked(true);
 };
 
 export const isGoogleConnected = (): boolean => {
@@ -459,5 +488,6 @@ export const logoutGoogle = async (revokeOnServer: boolean = true): Promise<void
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem('google_drive_tasks_file_id');
+  setGoogleAccountLinked(false);
   clearStoredMicPermission();
 };

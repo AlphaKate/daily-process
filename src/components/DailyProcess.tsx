@@ -45,7 +45,8 @@ import {
   Sunrise,
   Inbox,
   Brain,
-  FolderOpen
+  FolderOpen,
+  Lock
 } from 'lucide-react';
 
 interface DailyProcessProps {
@@ -63,6 +64,8 @@ interface DailyProcessProps {
   onOpenMorningReview?: () => void;
   onOpenBirthdaysModal?: () => void;
   onOpenDriveFolderPrompt?: () => void;
+  isSessionExpired?: boolean;
+  onReconnectGoogle?: () => void;
 }
 
 const HEBREW_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
@@ -86,6 +89,8 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
   onOpenMorningReview,
   onOpenBirthdaysModal,
   onOpenDriveFolderPrompt,
+  isSessionExpired = false,
+  onReconnectGoogle,
 }) => {
   const [showDoneSection, setShowDoneSection] = useState(true);
   const [goalsViewMode, setGoalsViewMode] = useState<'day' | 'week' | 'month'>('day');
@@ -426,20 +431,65 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
         </div>
       )}
 
-      {/* GLOBAL VIEW CONTROLS (הרחב / כווץ הכל) */}
-      <div className="flex items-center justify-between text-xs px-1">
-        <span className="text-slate-400 font-medium">
-          {activeTasks.length} משימות מתוכננות להיום
-        </span>
-        <button
-          type="button"
-          onClick={() => setAllTasksExpanded(prev => (prev === true ? false : true))}
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:border-emerald-300 transition-colors shadow-2xs cursor-pointer"
-        >
-          {allTasksExpanded ? <ChevronUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          <span>{allTasksExpanded ? 'כווץ הכל' : 'הרחב הכל'}</span>
-        </button>
-      </div>
+      {/* 0. SESSION EXPIRED NOTIFICATION & RECONNECT BANNER */}
+      {isSessionExpired ? (
+        <div className="p-6 sm:p-8 bg-gradient-to-b from-amber-500/10 via-orange-500/10 to-amber-500/5 dark:from-amber-950/40 dark:via-orange-950/30 dark:to-slate-900/40 border-2 border-amber-500/50 dark:border-amber-500/40 rounded-3xl shadow-xl text-center space-y-4 my-4 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="w-16 h-16 mx-auto bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center shadow-inner">
+            <Lock className="w-8 h-8 stroke-[2.2]" />
+          </div>
+
+          <div className="space-y-2 max-w-lg mx-auto">
+            <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
+              פג תוקף החיבור לחשבון Google 🔒
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+              בהתאם למדיניות האבטחה של Google, החיבור מתנתק לאחר זמן מה.
+              <br />
+              <strong className="text-amber-700 dark:text-amber-300">המסך רוקן ממשימות</strong> על מנת להבהיר שהחשבון מנותק ויש להתחבר שוב.
+            </p>
+          </div>
+
+          {/* Preserved Google Drive Folder Indicator */}
+          {getStoredDriveFolderId() ? (
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500/15 border border-emerald-500/30 rounded-2xl text-xs font-semibold text-emerald-800 dark:text-emerald-200">
+              <FolderOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>הקישור לתיקיית Google Drive שלך נשמר במכשיר ויופעל מיד עם ההתחברות</span>
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs text-slate-600 dark:text-slate-400">
+              <span>התחברי מחדש לסנכרון יומן ומשימות מול Google</span>
+            </div>
+          )}
+
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            {onReconnectGoogle && (
+              <button
+                type="button"
+                onClick={onReconnectGoogle}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 px-6 py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm rounded-2xl shadow-lg shadow-emerald-600/25 active:scale-95 transition-all cursor-pointer"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>התחבר מחדש עם Google וטען משימות</span>
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* GLOBAL VIEW CONTROLS (הרחב / כווץ הכל) */}
+          <div className="flex items-center justify-between text-xs px-1">
+            <span className="text-slate-400 font-medium">
+              {activeTasks.length} משימות מתוכננות להיום
+            </span>
+            <button
+              type="button"
+              onClick={() => setAllTasksExpanded(prev => (prev === true ? false : true))}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:border-emerald-300 transition-colors shadow-2xs cursor-pointer"
+            >
+              {allTasksExpanded ? <ChevronUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              <span>{allTasksExpanded ? 'כווץ הכל' : 'הרחב הכל'}</span>
+            </button>
+          </div>
 
       {/* 1. MUST DO SECTION */}
       <section className="space-y-3">
@@ -1398,6 +1448,8 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
             </div>
           )}
         </section>
+      )}
+      </>
       )}
 
       {/* 5. GOALS TIMELINE MODAL */}

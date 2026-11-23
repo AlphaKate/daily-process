@@ -20,7 +20,10 @@ import {
   isGoogleConnected,
   onUserProfileUpdated,
   GoogleUser,
-  getStoredDriveFolderId
+  getStoredDriveFolderId,
+  isGoogleSessionExpired,
+  isGoogleAccountLinked,
+  setGoogleAccountLinked
 } from './services/googleAuth';
 import { DriveFolderPromptModal } from './components/DriveFolderPromptModal';
 import {
@@ -71,6 +74,7 @@ export const App: React.FC = () => {
   // Google integration state
   const [googleUser, setGoogleUser] = useState<GoogleUser | null>(getStoredGoogleUser);
   const [isTokenValid, setIsTokenValid] = useState<boolean>(isGoogleConnected);
+  const [isSessionExpired, setIsSessionExpired] = useState<boolean>(() => isGoogleSessionExpired());
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
 
@@ -132,15 +136,31 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  const handleAutomaticSessionExpiration = useCallback(() => {
+    setIsSessionExpired(true);
+    setIsTokenValid(false);
+    setTasks([]); // Empty the screen immediately so user clearly understands the session expired
+    showToast(
+      'פג תוקף החיבור לחשבון Google (מדיניות אבטחה של גוגל) — המסך רוקן. הקישור ל-Drive נשמר, יש להתחבר מחדש.',
+      'warning'
+    );
+  }, []);
+
   const syncGoogleServices = useCallback(async (tokenStr?: string, silent: boolean = false) => {
     const tokenObj = tokenStr ? { access_token: tokenStr } : getStoredToken();
     if (!tokenObj) {
       setIsTokenValid(false);
+      if (isGoogleAccountLinked()) {
+        handleAutomaticSessionExpiration();
+        return;
+      }
       if (!silent) {
         showToast('חיבור ה-Google פג תוקף — פותח התחברות לחידוש הסנכרון...', 'warning');
         triggerGoogleLogin(
           (freshToken) => {
+            setIsSessionExpired(false);
             setIsTokenValid(true);
+            setGoogleAccountLinked(true);
             setGoogleUser(getStoredGoogleUser() || { email: 'מחובר ל-Google', name: 'משתמש Google' });
             showToast('החיבור חודש בהצלחה! מסנכרן...', 'success');
             syncGoogleServices(freshToken.access_token);
@@ -303,8 +323,16 @@ export const App: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Overall Google sync error:', err);
-      if (err?.status === 401 || err?.message?.includes('401')) {
+      const isAuthError =
+        err?.status === 401 ||
+        err?.message?.includes('401') ||
+        /unauthorized|invalid_token|expired|invalid_grant/i.test(err?.message || '');
+      if (isAuthError) {
         setIsTokenValid(false);
+        if (isGoogleAccountLinked()) {
+          handleAutomaticSessionExpiration();
+          return;
+        }
       }
       if (!silent) {
         showToast(err.message || 'שגיאה בסנכרון מול Google', 'error');
@@ -312,11 +340,17 @@ export const App: React.FC = () => {
     } finally {
       setIsSyncing(false);
     }
-  }, [currentDate, persistTasks]);
+  }, [currentDate, persistTasks, handleAutomaticSessionExpiration]);
 
   // Initialize data, theme, and Google Token Client
   useEffect(() => {
     const initData = async () => {
+      if (isGoogleSessionExpired()) {
+        setIsSessionExpired(true);
+        setIsTokenValid(false);
+        setTasks([]);
+        return;
+      }
       await loadStoredTasksSecure();
       const loadedTasks = ensureAssertivePracticePlanSeeded();
       setTasks(loadedTasks);
@@ -369,6 +403,9 @@ export const App: React.FC = () => {
     initGoogleTokenClient(
       (token) => {
         tokenHandled = true;
+        setIsSessionExpired(false);
+        setIsTokenValid(true);
+        setGoogleAccountLinked(true);
         setGoogleUser(getStoredGoogleUser() || { email: 'מחובר ל-Google', name: 'משתמש Google' });
         showToast('התחברת בהצלחה לחשבון Google!', 'success');
         syncGoogleServices(token.access_token);
@@ -383,24 +420,32 @@ export const App: React.FC = () => {
     if (!tokenHandled) {
       const stored = getStoredToken();
       if (stored) {
+        setIsSessionExpired(false);
+        setIsTokenValid(true);
         syncGoogleServices(stored.access_token, true);
         if (!getStoredDriveFolderId()) {
           setTimeout(() => {
             setIsDrivePromptOpen(true);
           }, 1200);
         }
+      } else if (isGoogleAccountLinked()) {
+        handleAutomaticSessionExpiration();
       }
     }
 
     return () => {
       unsubscribeProfile();
     };
-  }, [syncGoogleServices]);
+  }, [syncGoogleServices, handleAutomaticSessionExpiration]);
 
   // Auto-sync when user returns to app / tab becomes visible
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
+        if (isGoogleAccountLinked() && !isGoogleConnected()) {
+          handleAutomaticSessionExpiration();
+          return;
+        }
         const now = Date.now();
         // Sync if at least 30 seconds passed since last sync
         if (now - lastSyncTimeRef.current > 30000) {
@@ -418,18 +463,24 @@ export const App: React.FC = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleVisibilityChange);
     };
-  }, [syncGoogleServices]);
+  }, [syncGoogleServices, handleAutomaticSessionExpiration]);
 
-  // Continuous background sync: Poll for Google Calendar updates every 60 seconds
+  // Continuous background sync: Poll for Google Calendar updates and monitor session timeout
   useEffect(() => {
     const timer = setInterval(() => {
+      if (isGoogleAccountLinked() && !isGoogleConnected()) {
+        if (!isSessionExpired) {
+          handleAutomaticSessionExpiration();
+        }
+        return;
+      }
       const stored = getStoredToken();
       if (stored?.access_token) {
         syncGoogleServices(stored.access_token, true);
       }
-    }, 60000);
+    }, 30000);
     return () => clearInterval(timer);
-  }, [syncGoogleServices]);
+  }, [syncGoogleServices, isSessionExpired, handleAutomaticSessionExpiration]);
 
   const applyDisplaySettings = useCallback((newSettings: AppSettings) => {
     // 1. Base font size scale (Tailwind rem units inherit directly from root font-size)
@@ -503,7 +554,9 @@ export const App: React.FC = () => {
     try {
       triggerGoogleLogin(
         (token) => {
+          setIsSessionExpired(false);
           setIsTokenValid(true);
+          setGoogleAccountLinked(true);
           setGoogleUser(getStoredGoogleUser() || { email: 'מחובר ל-Google', name: 'משתמש Google' });
           showToast('התחברת בהצלחה לחשבון Google!', 'success');
           syncGoogleServices(token.access_token);
@@ -536,9 +589,13 @@ export const App: React.FC = () => {
       logoutMicrosoft();
       setGoogleUser(null);
       setIsTokenValid(false);
+      setIsSessionExpired(false);
+      setGoogleAccountLinked(false);
       showToast('התנתקת מ-Google וממקורות הענן (הרשאה בוטלה בשרת)', 'success');
     } catch (e: any) {
       setIsTokenValid(false);
+      setIsSessionExpired(false);
+      setGoogleAccountLinked(false);
       showToast('התנתקות הושלמה מקומית', 'success');
     }
   };
@@ -547,6 +604,8 @@ export const App: React.FC = () => {
     try {
       await logoutGoogle(true);
       logoutMicrosoft();
+      setGoogleAccountLinked(false);
+      setIsSessionExpired(false);
       await performEmergencyLocalWipe();
       setTasks([]);
       setGoogleUser(null);
@@ -1125,7 +1184,7 @@ export const App: React.FC = () => {
         onOpenBirthdaysModal={() => setIsBirthdaysModalOpen(true)}
         birthdaysTodayCount={birthdaysTodayCount}
         googleUser={googleUser}
-        isGoogleConnected={isTokenValid}
+        isGoogleConnected={isTokenValid && !isSessionExpired}
         isSyncing={isSyncing}
         onConnectGoogle={handleConnectGoogle}
         onSyncGoogle={handleUserTriggeredSync}
@@ -1186,6 +1245,8 @@ export const App: React.FC = () => {
             onOpenMorningReview={() => setIsMorningReviewOpen(true)}
             onOpenBirthdaysModal={() => setIsBirthdaysModalOpen(true)}
             onOpenDriveFolderPrompt={() => setIsDrivePromptOpen(true)}
+            isSessionExpired={isSessionExpired}
+            onReconnectGoogle={handleConnectGoogle}
           />
         ) : (
           <StatsView
