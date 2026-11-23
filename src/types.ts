@@ -69,6 +69,7 @@ export interface AppSettings {
   highContrast?: boolean;
   cardDensity?: 'comfortable' | 'compact';
   confettiEnabled?: boolean;
+  privacyShieldEnabled?: boolean;
   lastActiveDate: string; // tracks when user last opened the app to detect day changes
   userFullName?: string;
 }

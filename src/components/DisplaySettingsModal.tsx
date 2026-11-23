@@ -45,6 +45,7 @@ export const DisplaySettingsModal: React.FC<DisplaySettingsModalProps> = ({
   const [highContrast, setHighContrast] = useState<boolean>(Boolean(settings.highContrast));
   const [cardDensity, setCardDensity] = useState<'comfortable' | 'compact'>(settings.cardDensity || 'comfortable');
   const [confettiEnabled, setConfettiEnabled] = useState<boolean>(settings.confettiEnabled !== false);
+  const [privacyShieldEnabled, setPrivacyShieldEnabled] = useState<boolean>(settings.privacyShieldEnabled !== false);
   const [driveFolderInput, setDriveFolderInput] = useState<string>(() => getStoredDriveFolderId());
 
   if (!isOpen) return null;
@@ -69,7 +70,8 @@ export const DisplaySettingsModal: React.FC<DisplaySettingsModalProps> = ({
       fontFamily: currentFontFamily,
       highContrast,
       cardDensity,
-      confettiEnabled
+      confettiEnabled,
+      privacyShieldEnabled
     };
     onSaveSettings(updated);
     onClose();
@@ -322,6 +324,27 @@ export const DisplaySettingsModal: React.FC<DisplaySettingsModalProps> = ({
                 checked={confettiEnabled}
                 onChange={e => setConfettiEnabled(e.target.checked)}
                 className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+              />
+            </label>
+
+            {/* Privacy Screen Blur (Privacy Shield) Toggle */}
+            <label className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/40 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer transition-colors">
+              <div className="flex items-center gap-2.5">
+                <Shield className="w-4 h-4 text-emerald-500" />
+                <div>
+                  <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 block">
+                    הסתרת מסך פרטיות (Privacy Shield)
+                  </span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    מסתיר אוטומטית את תוכן המסך בעת מעבר אפליקציות או חוסר מיקוד למניעת הצצה
+                  </span>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={privacyShieldEnabled}
+                onChange={e => setPrivacyShieldEnabled(e.target.checked)}
+                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
               />
             </label>
 

@@ -53,6 +53,7 @@ export const getAppSettings = (): AppSettings => {
         highContrast: Boolean(parsed.highContrast),
         cardDensity: parsed.cardDensity || 'comfortable',
         confettiEnabled: parsed.confettiEnabled !== false,
+        privacyShieldEnabled: parsed.privacyShieldEnabled !== false,
         lastActiveDate: parsed.lastActiveDate || getTodayDateString(),
         userFullName: parsed.userFullName
       };
@@ -67,6 +68,7 @@ export const getAppSettings = (): AppSettings => {
     highContrast: false,
     cardDensity: 'comfortable',
     confettiEnabled: true,
+    privacyShieldEnabled: true,
     lastActiveDate: getTodayDateString()
   };
 };

@@ -1395,7 +1395,19 @@ export const App: React.FC = () => {
       />
 
       {/* App Switcher & Background Privacy Shield */}
-      <AppPrivacyShield enabled={true} />
+      <AppPrivacyShield
+        enabled={settings.privacyShieldEnabled !== false}
+        onDisablePermanently={() => {
+          const updated: AppSettings = {
+            ...settings,
+            privacyShieldEnabled: false
+          };
+          setSettings(updated);
+          saveAppSettings(updated);
+          showToast('הסתרת מסך פרטיות כובתה בהצלחה!', 'success');
+        }}
+        onOpenSettings={() => setIsDisplaySettingsOpen(true)}
+      />
     </div>
   );
 };
