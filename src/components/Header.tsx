@@ -14,7 +14,8 @@ import {
   Sunrise,
   Bell,
   Mic,
-  Shield
+  Shield,
+  FileText
 } from 'lucide-react';
 import { formatDateDisplayHebrew, getTodayDateString } from '../services/storage';
 import { GoogleUser } from '../services/googleAuth';
@@ -47,6 +48,8 @@ interface HeaderProps {
   birthdaysTodayCount?: number;
   // Security & Disconnect
   onOpenSecurityModal?: () => void;
+  // Privacy Policy & Open Source Licenses
+  onOpenPrivacyLegal?: () => void;
   // Display & Font Settings
   onOpenDisplaySettings?: () => void;
 }
@@ -73,6 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenBirthdaysModal,
   birthdaysTodayCount,
   onOpenSecurityModal,
+  onOpenPrivacyLegal,
   onOpenDisplaySettings,
 }) => {
   const isToday = currentDate === getTodayDateString();
@@ -210,10 +214,24 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={onOpenSecurityModal}
-                className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors relative cursor-pointer"
-                title="אבטחה, ניתוק ומחיקת חירום"
+                className="p-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200/80 dark:border-emerald-800/80 transition-colors relative cursor-pointer shadow-2xs"
+                title="מרכז אבטחה, ניתוק ומחיקת חירום 🛡️"
+                aria-label="אבטחה ופרטיות"
               >
-                <Shield className="w-4 h-4 text-slate-500 dark:text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 transition-colors" />
+                <Shield className="w-4 h-4 stroke-[2.2]" />
+              </button>
+            )}
+
+            {/* Direct Privacy Policy & Open Source Licenses Button */}
+            {onOpenPrivacyLegal && (
+              <button
+                type="button"
+                onClick={onOpenPrivacyLegal}
+                className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-600 transition-colors relative cursor-pointer"
+                title="הצהרת פרטיות ורישיונות קוד פתוח 📜"
+                aria-label="הצהרת פרטיות ורישיונות קוד פתוח"
+              >
+                <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400 stroke-[2.2]" />
               </button>
             )}
 

@@ -10,7 +10,9 @@ import {
   Sparkles,
   Contrast,
   LayoutList,
-  FolderOpen
+  FolderOpen,
+  Shield,
+  FileText
 } from 'lucide-react';
 import { AppSettings, FontSizeSetting, ThemeSetting, FontFamilySetting } from '../types';
 import { getStoredDriveFolderId, saveStoredDriveFolderId } from '../services/googleAuth';
@@ -20,6 +22,7 @@ interface DisplaySettingsModalProps {
   onClose: () => void;
   settings: AppSettings;
   onSaveSettings: (settings: AppSettings) => void;
+  onOpenPrivacyLegal?: () => void;
 }
 
 const FONT_SIZE_LEVELS: { id: FontSizeSetting; label: string; scaleRem: string; description: string }[] = [
@@ -33,7 +36,8 @@ export const DisplaySettingsModal: React.FC<DisplaySettingsModalProps> = ({
   isOpen,
   onClose,
   settings,
-  onSaveSettings
+  onSaveSettings,
+  onOpenPrivacyLegal
 }) => {
   const [currentTheme, setCurrentTheme] = useState<ThemeSetting>(settings.theme || 'system');
   const [currentFontSize, setCurrentFontSize] = useState<FontSizeSetting>(settings.fontSize || 'medium');
@@ -371,6 +375,36 @@ export const DisplaySettingsModal: React.FC<DisplaySettingsModalProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Privacy Policy & Open Source Licenses Section */}
+            {onOpenPrivacyLegal && (
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                    <Shield className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white block">
+                      פרטיות ורישיונות קוד פתוח
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      הצהרת פרטיות רשמית וייחוס ספריות
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenPrivacyLegal();
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer flex items-center gap-1"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>צפה בהצהרה 📜</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

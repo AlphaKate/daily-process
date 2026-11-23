@@ -1134,6 +1134,7 @@ export const App: React.FC = () => {
         areNotificationsEnabled={notificationPrefs.enabled}
         onOpenVoiceTask={() => setIsVoiceModalOpen(true)}
         onOpenSecurityModal={() => setIsSecurityModalOpen(true)}
+        onOpenPrivacyLegal={() => setIsPrivacyLegalModalOpen(true)}
         onOpenDisplaySettings={() => setIsDisplaySettingsOpen(true)}
       />
 
@@ -1193,6 +1194,25 @@ export const App: React.FC = () => {
           />
         )}
       </main>
+
+      {/* Footer with direct Privacy Policy & Open Source Licenses link */}
+      <footer className="w-full max-w-4xl mx-auto px-4 py-6 mt-8 border-t border-slate-200/60 dark:border-slate-800 text-center text-xs text-slate-500 dark:text-slate-400 flex flex-wrap items-center justify-center gap-2 sm:gap-3">
+        <span className="font-semibold text-slate-700 dark:text-slate-300">יומי & התפתחות</span>
+        <span>•</span>
+        <button
+          onClick={() => setIsPrivacyLegalModalOpen(true)}
+          className="text-emerald-600 dark:text-emerald-400 hover:underline font-semibold cursor-pointer inline-flex items-center gap-1"
+        >
+          <span>הצהרת פרטיות ורישיונות קוד פתוח 📜</span>
+        </button>
+        <span>•</span>
+        <button
+          onClick={() => setIsSecurityModalOpen(true)}
+          className="hover:underline cursor-pointer inline-flex items-center gap-1"
+        >
+          <span>מרכז אבטחה וחירום 🛡️</span>
+        </button>
+      </footer>
 
       {/* Add / Edit Task Modal */}
       <TaskModal
@@ -1275,6 +1295,7 @@ export const App: React.FC = () => {
         onClose={() => setIsDisplaySettingsOpen(false)}
         settings={settings}
         onSaveSettings={handleSaveDisplaySettings}
+        onOpenPrivacyLegal={() => setIsPrivacyLegalModalOpen(true)}
       />
 
       {/* Google Drive Folder Setup Prompt Modal */}
