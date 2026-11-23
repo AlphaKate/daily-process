@@ -46,6 +46,7 @@ import { VoiceTaskModal } from './components/VoiceTaskModal';
 import { BirthdaysModal } from './components/BirthdaysModal';
 import { SecurityDisconnectModal } from './components/SecurityDisconnectModal';
 import { DisplaySettingsModal } from './components/DisplaySettingsModal';
+import { PrivacyLegalModal } from './components/PrivacyLegalModal';
 import { AppPrivacyShield } from './components/AppPrivacyShield';
 import {
   NotificationPreferences,
@@ -103,6 +104,9 @@ export const App: React.FC = () => {
 
   // Display & Font Size Settings Modal state
   const [isDisplaySettingsOpen, setIsDisplaySettingsOpen] = useState(false);
+
+  // Privacy Policy & Open Source Licenses Modal state
+  const [isPrivacyLegalModalOpen, setIsPrivacyLegalModalOpen] = useState(false);
 
   // Google Drive Folder Configuration Prompt Modal state
   const [isDrivePromptOpen, setIsDrivePromptOpen] = useState(false);
@@ -1253,6 +1257,16 @@ export const App: React.FC = () => {
         tasksCount={tasks.filter(t => !t.isDeleted).length}
         onDisconnectOnly={handleDisconnectOnly}
         onEmergencyWipe={handleEmergencyWipe}
+        onOpenPrivacyLegal={() => {
+          setIsSecurityModalOpen(false);
+          setIsPrivacyLegalModalOpen(true);
+        }}
+      />
+
+      {/* Privacy Policy & Open Source Licenses Modal */}
+      <PrivacyLegalModal
+        isOpen={isPrivacyLegalModalOpen}
+        onClose={() => setIsPrivacyLegalModalOpen(false)}
       />
 
       {/* Display & Font Settings Modal */}

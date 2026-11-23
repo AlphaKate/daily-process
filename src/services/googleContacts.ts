@@ -112,10 +112,19 @@ export const isBirthdayTaskCheck = (task: {
   description?: string;
   birthdayGreeting?: string;
 }): boolean => {
-  if (task.id && (task.id.startsWith('gcontact-') || task.id.includes('bday') || task.id.includes('birthday'))) return true;
-  if (Boolean(task.birthdayGreeting)) return true;
+  if (
+    task.id &&
+    (task.id.startsWith('gcontact-bday-') ||
+      task.id.startsWith('custom-bday-') ||
+      task.id.startsWith('bday-'))
+  ) {
+    return true;
+  }
+
   const text = `${task.title || ''} ${task.description || ''}`;
-  return /(?:יום[\s-]*הולדת(?:ו|ה)?|יומ(?:ה)?ולדת(?:ו|ה)?|חגיגת\s+יום[\s-]*הולדת|\bb-?days?\b|\bbirthdays?\b|🎂|🎈)/i.test(text);
+  return /(?:יום[\s-]*הולדת(?:ו|ה)?|יומ(?:ה)?ולדת(?:ו|ה)?|חגיגת\s+יום[\s-]*הולדת|\bhappy\s+b-?day\b|\bbirthdays?\b|🎂)/i.test(
+    text
+  );
 };
 
 /**

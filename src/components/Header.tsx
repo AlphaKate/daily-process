@@ -190,20 +190,18 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             </div>
 
-            {/* Birthdays & Greetings Hub */}
-            {onOpenBirthdaysModal && (
+            {/* Birthdays & Greetings Hub - only shown on days when there are birthdays today */}
+            {onOpenBirthdaysModal && Boolean(birthdaysTodayCount && birthdaysTodayCount > 0) && (
               <button
                 type="button"
                 onClick={onOpenBirthdaysModal}
                 className="p-1.5 text-slate-600 dark:text-slate-300 hover:bg-pink-50 dark:hover:bg-pink-950/50 rounded-xl transition-colors relative cursor-pointer group"
-                title="ימי הולדת וברכות 🎂"
+                title={`יש היום ${birthdaysTodayCount} ימי הולדת! 🎂`}
               >
                 <span className="text-base group-hover:scale-110 transition-transform inline-block leading-none">🎂</span>
-                {birthdaysTodayCount !== undefined && birthdaysTodayCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-pink-500 text-white text-[9px] font-black flex items-center justify-center animate-bounce shadow-2xs">
-                    {birthdaysTodayCount}
-                  </span>
-                )}
+                <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full bg-pink-500 text-white text-[9px] font-black flex items-center justify-center animate-bounce shadow-2xs">
+                  {birthdaysTodayCount}
+                </span>
               </button>
             )}
 

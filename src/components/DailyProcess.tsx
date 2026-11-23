@@ -4,7 +4,7 @@ import { TaskItem } from './TaskItem';
 import { GoalsTimelineModal } from './GoalsTimelineModal';
 import { CurriculumImportModal } from './CurriculumImportModal';
 import { NotebookManagerModal } from './NotebookManagerModal';
-import { getStoredTasks, saveStoredTasks, getTodayDateString, formatDateDisplayHebrew } from '../services/storage';
+import { getStoredTasks, saveStoredTasks, getTodayDateString } from '../services/storage';
 import {
   getStoredNotebooks,
   deleteLearningNotebook,
@@ -355,26 +355,11 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
   const calendarTasksForDay = tasks.filter(t => !t.isDeleted && t.id.startsWith('gcal-'));
   const calendarMeetingsCount = calendarTasksForDay.length;
 
-  // Google Contacts Birthdays count for today
+  // Birthday tasks for current displayed day ONLY
   const birthdayTasksForDay = tasks.filter(
     t => !t.isDeleted && isBirthdayTaskCheck(t)
   );
   const birthdaysCount = birthdayTasksForDay.length;
-
-  // Upcoming Birthdays in next 21 days (across all tasks)
-  const upcomingBirthdays = React.useMemo(() => {
-    const [cy, cm, cd] = currentDate.split('-').map(Number);
-    const curDate = new Date(cy, cm - 1, cd, 0, 0, 0);
-
-    return masterTasks.filter(t => {
-      if (t.isDeleted || !t.date || t.date === 'backlog' || t.date === currentDate) return false;
-      if (!isBirthdayTaskCheck(t)) return false;
-      const [ty, tm, td] = t.date.split('-').map(Number);
-      const targetDate = new Date(ty, tm - 1, td, 0, 0, 0);
-      const diffDays = Math.round((targetDate.getTime() - curDate.getTime()) / (1000 * 60 * 60 * 24));
-      return diffDays > 0 && diffDays <= 21;
-    }).sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-  }, [masterTasks, currentDate]);
 
   // Filter goals for display
   const filteredGoalsForDay =
@@ -411,8 +396,8 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
         </div>
       )}
 
-      {/* Upcoming Birthdays Alert Banner (in next 21 days) */}
-      {upcomingBirthdays.length > 0 && (
+      {/* Birthday Celebration Banner - ONLY displayed on the day of the birthday for that person */}
+      {birthdaysCount > 0 && (
         <div className="p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-pink-500/15 via-rose-500/10 to-purple-500/10 dark:from-pink-950/40 dark:via-rose-950/30 dark:to-slate-900 border border-pink-300 dark:border-pink-800/80 flex items-center justify-between gap-3 shadow-2xs animate-in fade-in">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-xl bg-pink-500/20 text-pink-600 dark:text-pink-400 flex items-center justify-center text-lg shrink-0">
@@ -420,22 +405,24 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
             </div>
             <div className="min-w-0">
               <div className="text-xs sm:text-sm font-bold text-pink-950 dark:text-pink-100 truncate">
-                {upcomingBirthdays.length === 1
-                  ? `יום הולדת קרוב: ${extractBirthdayPersonName(upcomingBirthdays[0].title, upcomingBirthdays[0].contactName)}`
-                  : `${upcomingBirthdays.length} ימי הולדת בשבועות הקרובים`}
+                {birthdaysCount === 1
+                  ? `היום יום הולדת ל${extractBirthdayPersonName(birthdayTasksForDay[0].title, birthdayTasksForDay[0].contactName)}! 🎉`
+                  : `היום יום הולדת ל-${birthdayTasksForDay.map(t => extractBirthdayPersonName(t.title, t.contactName)).join(', ')}! 🎉`}
               </div>
               <p className="text-[11px] text-pink-700 dark:text-pink-300 truncate">
-                {formatDateDisplayHebrew(upcomingBirthdays[0].date)} — לחצי לצפייה בברכות מוכנות ושליחה בוואטסאפ
+                ברכות מוכנות לשליחה ישירה בוואטסאפ מחכות לך כאן למטה 💌
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onOpenBirthdaysModal}
-            className="px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 active:scale-95 text-white font-bold text-xs shrink-0 shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <span>פתח ברכות 💌</span>
-          </button>
+          {onOpenBirthdaysModal && (
+            <button
+              type="button"
+              onClick={onOpenBirthdaysModal}
+              className="px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 active:scale-95 text-white font-bold text-xs shrink-0 shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>מרכז ברכות 💌</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -482,20 +469,22 @@ export const DailyProcess: React.FC<DailyProcessProps> = ({
                     </span>
                   </span>
                 )}
-                {/* Birthdays Pill & Direct Modal Trigger */}
-                <button
-                  type="button"
-                  onClick={onOpenBirthdaysModal}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-full bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/70 dark:hover:bg-pink-900/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800 shadow-2xs transition-all cursor-pointer"
-                  title="לחצי לפתיחת לוח ימי הולדת וברכות 🎂"
-                >
-                  <span className="text-sm leading-none">🎂</span>
-                  <span>
-                    {birthdaysCount > 0
-                      ? (birthdaysCount === 1 ? 'יום הולדת 1 היום 🎉' : `${birthdaysCount} ימי הולדת היום 🎉`)
-                      : 'ימי הולדת וברכות'}
-                  </span>
-                </button>
+                {/* Birthdays Pill & Direct Modal Trigger - only shown when someone has a birthday today */}
+                {birthdaysCount > 0 && onOpenBirthdaysModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenBirthdaysModal}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-full bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/70 dark:hover:bg-pink-900/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800 shadow-2xs transition-all cursor-pointer"
+                    title="לחצי לפתיחת לוח ימי הולדת וברכות 🎂"
+                  >
+                    <span className="text-sm leading-none">🎂</span>
+                    <span>
+                      {birthdaysCount === 1
+                        ? `יום הולדת ל${extractBirthdayPersonName(birthdayTasksForDay[0].title, birthdayTasksForDay[0].contactName)} 🎉`
+                        : `${birthdaysCount} ימי הולדת היום 🎉`}
+                    </span>
+                  </button>
+                )}
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
                 פגישות, התחייבויות קריטיות ודברים שחייבים לקרות היום

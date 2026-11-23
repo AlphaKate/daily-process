@@ -8,7 +8,8 @@ import {
   CheckCircle2, 
   AlertTriangle,
   HardDrive,
-  Info
+  Info,
+  FileText
 } from 'lucide-react';
 import { GoogleUser } from '../services/googleAuth';
 
@@ -19,6 +20,7 @@ interface SecurityDisconnectModalProps {
   tasksCount: number;
   onDisconnectOnly: () => Promise<void>;
   onEmergencyWipe: () => Promise<void>;
+  onOpenPrivacyLegal?: () => void;
 }
 
 export const SecurityDisconnectModal: React.FC<SecurityDisconnectModalProps> = ({
@@ -27,7 +29,8 @@ export const SecurityDisconnectModal: React.FC<SecurityDisconnectModalProps> = (
   googleUser,
   tasksCount,
   onDisconnectOnly,
-  onEmergencyWipe
+  onEmergencyWipe,
+  onOpenPrivacyLegal
 }) => {
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [confirmWipeStep, setConfirmWipeStep] = useState<boolean>(false);
@@ -227,9 +230,21 @@ export const SecurityDisconnectModal: React.FC<SecurityDisconnectModalProps> = (
 
         {/* Modal Footer */}
         <div className="px-5 py-3 bg-slate-50 dark:bg-slate-850 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center shrink-0">
-          <div className="flex items-center gap-1.5 text-slate-400 text-[11px]">
-            <Shield className="w-3.5 h-3.5" />
-            <span>פרוטוקול אבטחה ופרטיות V1.0</span>
+          <div className="flex items-center gap-3 text-slate-400 text-[11px]">
+            <div className="flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5" />
+              <span>פרוטוקול אבטחה V1.0</span>
+            </div>
+            {onOpenPrivacyLegal && (
+              <button
+                type="button"
+                onClick={onOpenPrivacyLegal}
+                className="text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1 font-semibold"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>הצהרת פרטיות וקוד פתוח ↗</span>
+              </button>
+            )}
           </div>
           <button
             onClick={onClose}
